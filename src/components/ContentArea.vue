@@ -6,7 +6,7 @@
     </TodoListWithOutBackend>
     <TodoList
         v-else
-        v-bind:backend-url="backendUrl"
+        :todo-api="todoApi"
     ></TodoList>
   </div>
 </template>
@@ -21,11 +21,12 @@ export default {
     TodoList
   },
   props: [
-      'backendUrl'
+      'backendUrl',
+      'todoApi'
   ],
   computed: {
     backendUrlIsEmpty: function () {
-      return !this.backendUrl;
+      return !this.backendUrl?.trim();
     }
   }
 }

@@ -29,20 +29,17 @@
 
 <template>
   <header class="site-header sticky-top py-1">
-    <nav class="container d-flex flex-column flex-md-row justify-content-between">
+    <nav class="container d-flex flex-column flex-md-row" aria-label="メインナビゲーション">
       <NavigationTitle></NavigationTitle>
-      <NavigationProfileDropDownCaret></NavigationProfileDropDownCaret>
     </nav>
   </header>
 </template>
 
 <script>
-import NavigationProfileDropDownCaret from "./NavigationProfileDropDownCaret.vue";
 import NavigationTitle from './NavigationTitle.vue';
 export default {
   name: 'Navigation',
   components: {
-    NavigationProfileDropDownCaret,
     NavigationTitle
   }
 }

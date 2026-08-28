@@ -20,6 +20,14 @@ export default [
     },
   },
   {
+    files: ['src/**/*.test.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ['*.config.js'],
     languageOptions: {
       globals: {

@@ -1,19 +1,23 @@
 <template>
   <Navigation></Navigation>
   <ContentArea
-      v-bind:backend-url="backendUrl"
+      :backend-url="backendUrl"
+      :todo-api="todoApi"
   ></ContentArea>
 </template>
 
 <script>
 import Navigation from './components/Navigation.vue';
 import ContentArea from "./components/ContentArea.vue";
+import { createTodoApi } from './api/todoApi.js'
 
 export default {
   name: "App",
   data: function() {
+    const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? '').trim()
     return {
-      backendUrl: import.meta.env.VITE_BACKEND_URL
+      backendUrl,
+      todoApi: backendUrl ? createTodoApi({ baseUrl: backendUrl }) : null,
     }
   },
   components: {
