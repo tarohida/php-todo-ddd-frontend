@@ -12,8 +12,8 @@
 </template>
 
 <script>
-import TodoList from "./TodoList";
-import TodoListWithOutBackend from "./TodoListWithOutBackend";
+import TodoList from "./TodoList.vue";
+import TodoListWithOutBackend from "./TodoListWithOutBackend.vue";
 export default {
   name: "ContentArea",
   components: {

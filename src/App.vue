@@ -7,13 +7,13 @@
 
 <script>
 import Navigation from './components/Navigation.vue';
-import ContentArea from "./components/ContentArea";
+import ContentArea from "./components/ContentArea.vue";
 
 export default {
   name: "App",
   data: function() {
     return {
-      backendUrl: process.env.VUE_APP_BACKEND_URL
+      backendUrl: import.meta.env.VITE_BACKEND_URL
     }
   },
   components: {

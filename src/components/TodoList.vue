@@ -110,7 +110,6 @@ export default {
       if (!value) {
         return;
       }
-      const FormData = require('form-data');
       const form = new FormData();
       form.append('title', value);
       axios.post(`${this.backendUrl}/tasks/create`,

@@ -37,8 +37,8 @@
 </template>
 
 <script>
-import NavigationProfileDropDownCaret from "./NavigationProfileDropDownCaret";
-import NavigationTitle from './NavigationTitle';
+import NavigationProfileDropDownCaret from "./NavigationProfileDropDownCaret.vue";
+import NavigationTitle from './NavigationTitle.vue';
 export default {
   name: 'Navigation',
   components: {
