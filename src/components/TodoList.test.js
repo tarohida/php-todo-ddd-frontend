@@ -1,0 +1,220 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import TodoList from './TodoList.vue'
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function api(overrides = {}) {
+  return {
+    list: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue({ id: 2, title: 'New task' }),
+    delete: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  }
+}
+
+function mountList(todoApi) {
+  return mount(TodoList, { props: { todoApi } })
+}
+
+describe('TodoList', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('loads tasks once on mount without starting a timer', async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Read' }]) })
+
+    const wrapper = mountList(todoApi)
+    expect(wrapper.get('[role="status"]').text()).toContain('読み込み中')
+    await flushPromises()
+
+    expect(todoApi.list).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('Read')
+    expect(setIntervalSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows an empty state', async () => {
+    const wrapper = mountList(api())
+    await flushPromises()
+    expect(wrapper.get('[data-testid="empty-state"]').text()).toContain('タスクはありません')
+  })
+
+  it('shows a user-visible loading error', async () => {
+    const wrapper = mountList(api({ list: vi.fn().mockRejectedValue(new Error('接続できません。')) }))
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toBe('接続できません。')
+    expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(false)
+  })
+
+  it('offers visible create and refresh controls', async () => {
+    const pending = deferred()
+    const wrapper = mountList(api({ list: vi.fn(() => pending.promise) }))
+
+    expect(wrapper.get('[data-testid="add-task"]').isVisible()).toBe(true)
+    expect(wrapper.get('[data-testid="refresh-tasks"]').isVisible()).toBe(true)
+    expect(wrapper.get('[data-testid="add-task"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="refresh-tasks"]').attributes('disabled')).toBeDefined()
+
+    pending.resolve([])
+    await flushPromises()
+    expect(wrapper.get('[data-testid="add-task"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="refresh-tasks"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('recovers from a list failure with an explicit retry', async () => {
+    const retry = deferred()
+    const list = vi.fn()
+      .mockRejectedValueOnce(new Error('接続できません。'))
+      .mockImplementationOnce(() => retry.promise)
+    const wrapper = mountList(api({ list }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="refresh-tasks"]').trigger('click')
+    expect(wrapper.get('[data-testid="refresh-tasks"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[role="status"]').text()).toContain('読み込み中')
+    await wrapper.get('[data-testid="refresh-tasks"]').trigger('click')
+    expect(list).toHaveBeenCalledTimes(2)
+
+    retry.resolve([{ id: 1, title: 'Recovered' }])
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Recovered')
+  })
+
+  it('ignores an initial list response after unmount', async () => {
+    const pending = deferred()
+    const wrapper = mountList(api({ list: vi.fn(() => pending.promise) }))
+    const vm = wrapper.vm
+
+    wrapper.unmount()
+    pending.resolve([{ id: 1, title: 'Too late' }])
+    await flushPromises()
+
+    expect(vm.tasks).toEqual([])
+    expect(vm.isLoading).toBe(true)
+  })
+
+  it('does not refresh or update state when unmounted during create', async () => {
+    const pending = deferred()
+    const list = vi.fn().mockResolvedValue([])
+    const todoApi = api({ list, create: vi.fn(() => pending.promise) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+    await wrapper.get('input').setValue('Late create')
+    await wrapper.get('form').trigger('submit')
+    const vm = wrapper.vm
+
+    wrapper.unmount()
+    pending.resolve({ id: 2, title: 'Late create' })
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(vm.newTask).toBe('Late create')
+    expect(vm.successMessage).toBe('')
+  })
+
+  it('does not refresh or update state when unmounted during delete', async () => {
+    const pending = deferred()
+    const list = vi.fn().mockResolvedValue([{ id: 1, title: 'Late delete' }])
+    const todoApi = api({ list, delete: vi.fn(() => pending.promise) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    const vm = wrapper.vm
+
+    wrapper.unmount()
+    pending.resolve()
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(vm.successMessage).toBe('')
+  })
+
+  it('awaits create, disables controls, then refreshes and reports success', async () => {
+    const pending = deferred()
+    const list = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 2, title: 'New task' }])
+    const todoApi = api({ list, create: vi.fn(() => pending.promise) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('input').setValue(' New task ')
+    await wrapper.get('form').trigger('submit')
+
+    expect(todoApi.create).toHaveBeenCalledWith('New task')
+    expect(wrapper.get('input').attributes('disabled')).toBeDefined()
+    expect(list).toHaveBeenCalledTimes(1)
+
+    pending.resolve({ id: 2, title: 'New task' })
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('New task')
+    expect(wrapper.get('[data-testid="success-message"]').text()).toBe('タスクを追加しました。')
+    expect(wrapper.get('input').element.value).toBe('')
+  })
+
+  it('shows a create failure and does not refresh or clear the input', async () => {
+    const list = vi.fn().mockResolvedValue([])
+    const todoApi = api({ list, create: vi.fn().mockRejectedValue(new Error('追加できません。')) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('input').setValue('Keep me')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[role="alert"]').text()).toBe('追加できません。')
+    expect(wrapper.get('input').element.value).toBe('Keep me')
+  })
+
+  it('awaits delete, disables controls, then refreshes and reports success', async () => {
+    const pending = deferred()
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ id: 1, title: 'Delete me' }])
+      .mockResolvedValueOnce([])
+    const todoApi = api({ list, delete: vi.fn(() => pending.promise) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    expect(todoApi.delete).toHaveBeenCalledWith(1)
+    expect(wrapper.get('[data-testid="delete-task-1"]').attributes('disabled')).toBeDefined()
+    expect(list).toHaveBeenCalledTimes(1)
+
+    pending.resolve()
+    await flushPromises()
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="success-message"]').text()).toBe('タスクを削除しました。')
+    expect(wrapper.find('[data-testid="delete-task-1"]').exists()).toBe(false)
+  })
+
+  it('shows a delete failure and does not refresh', async () => {
+    const list = vi.fn().mockResolvedValue([{ id: 1, title: 'Keep me' }])
+    const todoApi = api({ list, delete: vi.fn().mockRejectedValue(new Error('削除できません。')) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[role="alert"]').text()).toBe('削除できません。')
+    expect(wrapper.text()).toContain('Keep me')
+  })
+})

@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   test: {
-    environment: 'node',
+    environment: 'jsdom',
   },
   server: {
     host: '0.0.0.0',
