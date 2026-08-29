@@ -35,6 +35,20 @@
               一覧を更新
             </button>
           </div>
+          <div class="task-filters mb-3" role="group" aria-label="タスクの表示切り替え">
+            <button
+              v-for="option in filterOptions"
+              :key="option.value"
+              type="button"
+              class="btn btn-sm btn-outline-secondary"
+              :class="{ active: filter === option.value }"
+              :aria-pressed="filter === option.value"
+              :data-testid="`filter-${option.value}`"
+              @click="filter = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
           <p v-if="isLoading" role="status" aria-live="polite">タスクを読み込み中です。</p>
           <p v-else-if="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</p>
           <p
@@ -49,12 +63,33 @@
           <p v-if="!isLoading && !errorMessage && tasks.length === 0" data-testid="empty-state">
             タスクはありません。
           </p>
+          <p
+            v-else-if="!isLoading && !errorMessage && filteredTasks.length === 0"
+            data-testid="filtered-empty-state"
+          >
+            {{ filteredEmptyMessage }}
+          </p>
 
-          <div v-if="tasks.length > 0" class="table-responsive">
+          <div v-if="filteredTasks.length > 0" class="table-responsive">
             <table class="table table-hover">
               <caption class="visually-hidden">Todoタスク一覧</caption>
               <tbody>
-                <tr v-for="task in tasks" :key="task.id" class="todo-list">
+                <tr
+                  v-for="task in filteredTasks"
+                  :key="task.id"
+                  class="todo-list"
+                  :class="{ 'todo-list-completed': task.completed }"
+                >
+                  <td class="p-1 text-center">
+                    <input
+                      type="checkbox"
+                      :checked="task.completed"
+                      :aria-label="`${task.title}を${task.completed ? '未完了' : '完了'}にする`"
+                      :data-testid="`complete-task-${task.id}`"
+                      :disabled="isBusy"
+                      @change="requestTaskCompletion(task, $event)"
+                    >
+                  </td>
                   <td class="p-1 text-center">
                     <button
                       type="button"
@@ -95,11 +130,31 @@ export default {
       successMessage: '',
       isActive: false,
       requestGeneration: 0,
+      filter: 'all',
+      filterOptions: [
+        { value: 'all', label: 'すべて' },
+        { value: 'active', label: '未完了' },
+        { value: 'completed', label: '完了済み' },
+      ],
     }
   },
   computed: {
     isBusy() {
       return this.isLoading || this.isMutating
+    },
+    filteredTasks() {
+      if (this.filter === 'active') {
+        return this.tasks.filter((task) => !task.completed)
+      }
+      if (this.filter === 'completed') {
+        return this.tasks.filter((task) => task.completed)
+      }
+      return this.tasks
+    },
+    filteredEmptyMessage() {
+      return this.filter === 'completed'
+        ? '完了済みのタスクはありません。'
+        : '未完了のタスクはありません。'
     },
   },
   mounted() {
@@ -115,6 +170,11 @@ export default {
       return error instanceof Error && error.message
         ? error.message
         : '予期しないエラーが発生しました。'
+    },
+    requestTaskCompletion(task, event) {
+      const completed = event.target.checked
+      event.target.checked = task.completed
+      this.updateTaskCompletion(task, completed)
     },
     async loadTasks({ preserveSuccess = false } = {}) {
       if (!this.isActive) {
@@ -206,6 +266,33 @@ export default {
         }
       }
     },
+    async updateTaskCompletion(task, completed) {
+      if (this.isBusy || task.completed === completed) {
+        return
+      }
+
+      this.isMutating = true
+      this.errorMessage = ''
+      this.successMessage = ''
+      try {
+        await this.todoApi.updateCompleted(task.id, completed)
+        if (!this.isActive) {
+          return
+        }
+        this.successMessage = completed
+          ? 'タスクを完了にしました。'
+          : 'タスクを未完了に戻しました。'
+        await this.loadTasks({ preserveSuccess: true })
+      } catch (error) {
+        if (this.isActive) {
+          this.errorMessage = this.errorText(error)
+        }
+      } finally {
+        if (this.isActive) {
+          this.isMutating = false
+        }
+      }
+    },
   },
 }
 </script>
@@ -246,6 +333,16 @@ export default {
 .todo-list {
   position: relative;
   font-size: 24px;
+}
+
+.todo-list-completed td:last-child {
+  color: #6c757d;
+  text-decoration: line-through;
+}
+
+.task-filters {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .delete-button {

@@ -7,6 +7,7 @@ function createHttpClient() {
   return {
     get: vi.fn(),
     post: vi.fn(),
+    patch: vi.fn(),
     delete: vi.fn(),
   }
 }
@@ -39,7 +40,7 @@ describe('todo API client', () => {
 
   it('lists tasks from the canonical endpoint', async () => {
     const httpClient = createHttpClient()
-    const tasks = [{ id: 1, title: 'write tests' }]
+    const tasks = [{ id: 1, title: 'write tests', completed: false }]
     httpClient.get.mockResolvedValue({ status: 200, data: tasks })
 
     const api = createTodoApi({ baseUrl: 'http://localhost:8081/', httpClient })
@@ -50,7 +51,7 @@ describe('todo API client', () => {
 
   it('creates a task with JSON on the canonical endpoint', async () => {
     const httpClient = createHttpClient()
-    const task = { id: 2, title: 'ship it' }
+    const task = { id: 2, title: 'ship it', completed: false }
     httpClient.post.mockResolvedValue({ status: 201, data: { task } })
 
     const api = createTodoApi({ baseUrl: 'http://localhost:8081', httpClient })
@@ -69,6 +70,30 @@ describe('todo API client', () => {
     expect(httpClient.delete).toHaveBeenCalledWith('/tasks/42')
   })
 
+  it('updates completion with JSON on the canonical task endpoint', async () => {
+    const httpClient = createHttpClient()
+    const task = { id: 42, title: 'ship it', completed: true }
+    httpClient.patch.mockResolvedValue({ status: 200, data: { task } })
+    const api = createTodoApi({ baseUrl: 'http://localhost:8081', httpClient })
+
+    await expect(api.updateCompleted(42, true)).resolves.toEqual(task)
+    expect(httpClient.patch).toHaveBeenCalledWith('/tasks/42', { completed: true })
+  })
+
+  it.each([
+    [400, 'validation', '入力内容を確認してください。'],
+    [404, 'not-found', '対象のタスクが見つかりません。'],
+    [500, 'server', 'サーバーでエラーが発生しました。'],
+  ])('normalizes an update HTTP %s response', async (status, type, message) => {
+    const httpClient = createHttpClient()
+    httpClient.patch.mockRejectedValue(axiosError(status, { error: { message: 'private' } }))
+    const api = createTodoApi({ baseUrl: 'http://localhost:8081', httpClient })
+
+    const error = await api.updateCompleted(1, true).catch((reason) => reason)
+    expect(error).toMatchObject({ type, status, message })
+    expect(JSON.stringify(error)).not.toContain('private')
+  })
+
   it('encodes a task ID as one path segment', async () => {
     const httpClient = createHttpClient()
     httpClient.delete.mockResolvedValue({ status: 204 })
@@ -81,17 +106,19 @@ describe('todo API client', () => {
 
   it.each([
     ['list', { status: 201, data: [] }],
-    ['create', { status: 200, data: { task: { id: 1, title: 'task' } } }],
+    ['create', { status: 200, data: { task: { id: 1, title: 'task', completed: false } } }],
+    ['updateCompleted', { status: 204, data: { task: { id: 1, title: 'task', completed: true } } }],
     ['delete', { status: 200, data: '' }],
     ['delete', { status: 204, data: { unexpected: true } }],
   ])('rejects an invalid successful %s HTTP contract', async (method, response) => {
     const httpClient = createHttpClient()
     httpClient.get.mockResolvedValue(response)
     httpClient.post.mockResolvedValue(response)
+    httpClient.patch.mockResolvedValue(response)
     httpClient.delete.mockResolvedValue(response)
 
     const api = createTodoApi({ baseUrl: 'http://localhost:8081', httpClient })
-    const error = await api[method]('task').catch((reason) => reason)
+    const error = await api[method]('task', true).catch((reason) => reason)
 
     expect(error).toBeInstanceOf(TodoApiError)
     expect(error).toMatchObject({
@@ -159,15 +186,18 @@ describe('todo API client', () => {
     ['list', { status: 200, data: { tasks: [] } }],
     ['list', { status: 200, data: [{ id: '1', title: 'wrong id type' }] }],
     ['list', { status: 200, data: [{ id: 1, title: '   ' }] }],
+    ['list', { status: 200, data: [{ id: 1, title: 'task' }] }],
     ['create', { status: 201, data: { task: { id: 1 } } }],
-    ['create', { status: 201, data: { task: { id: 0, title: 'wrong id' } } }],
+    ['create', { status: 201, data: { task: { id: 0, title: 'wrong id', completed: false } } }],
+    ['updateCompleted', { status: 200, data: { task: { id: 1, title: 'task', completed: 'yes' } } }],
   ])('rejects a malformed successful %s response', async (method, response) => {
     const httpClient = createHttpClient()
     httpClient.get.mockResolvedValue(response)
     httpClient.post.mockResolvedValue(response)
+    httpClient.patch.mockResolvedValue(response)
 
     const api = createTodoApi({ baseUrl: 'http://localhost:8081', httpClient })
-    const error = await api[method]('title').catch((reason) => reason)
+    const error = await api[method]('title', true).catch((reason) => reason)
 
     expect(error).toBeInstanceOf(TodoApiError)
     expect(error).toMatchObject({
