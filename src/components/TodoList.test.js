@@ -19,6 +19,7 @@ function api(overrides = {}) {
     create: vi.fn().mockResolvedValue({ id: 2, title: 'New task' }),
     delete: vi.fn().mockResolvedValue(undefined),
     updateCompleted: vi.fn().mockResolvedValue({ id: 1, title: 'Task', completed: true }),
+    updateTitle: vi.fn().mockResolvedValue({ id: 1, title: 'Renamed', completed: false }),
     ...overrides,
   }
 }
@@ -302,6 +303,111 @@ describe('TodoList', () => {
 
     expect(list).toHaveBeenCalledTimes(1)
     expect(vm.tasks[0].completed).toBe(false)
+    expect(vm.successMessage).toBe('')
+  })
+
+  it('saves with Enter exactly once, waits for PATCH, then refreshes in exact order', async () => {
+    const pending = deferred()
+    const calls = []
+    const list = vi.fn()
+      .mockImplementationOnce(async () => {
+        calls.push('GET initial')
+        return [{ id: 1, title: 'Before', completed: true }]
+      })
+      .mockImplementationOnce(async () => {
+        calls.push('GET refresh')
+        return [{ id: 1, title: 'After', completed: true }]
+      })
+    const updateTitle = vi.fn(() => {
+      calls.push('PATCH')
+      return pending.promise
+    })
+    const wrapper = mountList(api({ list, updateTitle }))
+    await flushPromises()
+
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus')
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    await flushPromises()
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    expect(focus).toHaveBeenCalledOnce()
+    await input.setValue(' After ')
+    await input.trigger('keydown', { key: 'Enter' })
+
+    expect(updateTitle).toHaveBeenCalledWith(1, 'After')
+    expect(updateTitle).toHaveBeenCalledTimes(1)
+    expect(wrapper.vm.tasks[0]).toEqual({ id: 1, title: 'Before', completed: true })
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="save-title-1"]').attributes('disabled')).toBeDefined()
+
+    pending.resolve({ id: 1, title: 'After', completed: true })
+    await flushPromises()
+    expect(calls).toEqual(['GET initial', 'PATCH', 'GET refresh'])
+    expect(wrapper.text()).toContain('After')
+    expect(wrapper.get('[data-testid="complete-task-1"]').element.checked).toBe(true)
+    expect(wrapper.get('[data-testid="complete-task-1"]').element.closest('tr').classList).toContain('todo-list-completed')
+  })
+
+  it('cancels editing with button and Escape without a request', async () => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="edit-title-1"]').setValue('Discard')
+    await wrapper.get('[data-testid="cancel-title-1"]').trigger('click')
+    expect(wrapper.text()).toContain('Original')
+    expect(todoApi.updateTitle).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="edit-title-1"]').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(false)
+    expect(todoApi.updateTitle).not.toHaveBeenCalled()
+  })
+
+  it('rejects a blank edited title locally and keeps editing', async () => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="edit-title-1"]').setValue('   ')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+
+    expect(todoApi.updateTitle).not.toHaveBeenCalled()
+    expect(wrapper.get('[role="alert"]').text()).toBe('タスク名を入力してください。')
+    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(true)
+  })
+
+  it('keeps the old title and editing input when title update fails', async () => {
+    const list = vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }])
+    const updateTitle = vi.fn().mockRejectedValue(new Error('変更できません。'))
+    const wrapper = mountList(api({ list, updateTitle }))
+    await flushPromises()
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="edit-title-1"]').setValue('Attempt')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(wrapper.vm.tasks[0].title).toBe('Original')
+    expect(wrapper.get('[role="alert"]').text()).toBe('変更できません。')
+    expect(wrapper.get('[data-testid="edit-title-1"]').element.value).toBe('Attempt')
+  })
+
+  it('does not refresh or update state when unmounted during title update', async () => {
+    const pending = deferred()
+    const list = vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }])
+    const wrapper = mountList(api({ list, updateTitle: vi.fn(() => pending.promise) }))
+    await flushPromises()
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="edit-title-1"]').setValue('Late')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    const vm = wrapper.vm
+    wrapper.unmount()
+    pending.resolve({ id: 1, title: 'Late', completed: false })
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(vm.tasks[0].title).toBe('Original')
     expect(vm.successMessage).toBe('')
   })
 })

@@ -101,6 +101,17 @@ export function createTodoApi({ baseUrl, httpClient } = {}) {
       return response.data.task
     },
 
+    async updateTitle(id, title) {
+      const response = await request(() => http.patch(
+        `/tasks/${encodeURIComponent(id)}/title`,
+        { title },
+      ))
+      if (response.status !== 200 || !isTask(response.data?.task)) {
+        throw contractError()
+      }
+      return response.data.task
+    },
+
     async delete(id) {
       const response = await request(() => http.delete(`/tasks/${encodeURIComponent(id)}`))
       if (response.status !== 204
