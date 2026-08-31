@@ -68,3 +68,11 @@ npm run build
 ```
 npm run lint
 ```
+
+## 画面資料
+
+主要画面、APIとの対応、画面遷移は [docs/screens.html](docs/screens.html) にまとめています。ビルドは不要で、次のコマンドからブラウザで確認できます。
+
+```bash
+open docs/screens.html
+```
