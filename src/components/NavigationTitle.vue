@@ -1,19 +1,11 @@
 <template>
-  <a class="py-2" href="/" aria-label="Product">
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="40"
-        height="40"
-        fill="none"
-        stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="2"
-        class="d-block mx-auto"
-        role="img"
-        viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10"/>
-      <path d="M14.31 8l5.74 9.94M9.69 8h11.48M7.38 12l5.74-9.94M9.69 16L3.95 6.06M14.31 16H2.83m13.79-4l-5.74 9.94"/>
-    </svg>
+  <a class="app-identity" href="/" aria-label="Todoホームへ移動">
+    <span class="app-identity__mark" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6.5 12.5 3.25 3.25L17.8 7.7" /></svg></span>
+    <span data-testid="app-title">Todoホーム</span>
   </a>
 </template>
+<style scoped>
+.app-identity { display: inline-flex; align-items: center; gap: var(--space-3); color: var(--color-text-strong); font-size: 1rem; font-weight: 720; letter-spacing: -.01em; text-decoration: none; }
+.app-identity__mark { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: .7rem; background: var(--color-accent); color: white; box-shadow: var(--shadow-soft); }
+.app-identity__mark svg { width: 1.2rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.25; }
+</style>

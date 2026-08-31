@@ -33,6 +33,23 @@ describe('TodoList', () => {
     vi.restoreAllMocks()
   })
 
+  it('renders a semantic quick capture, summary, filters, and task list', async () => {
+    const wrapper = mountList(api({ list: vi.fn().mockResolvedValue([
+      { id: 1, title: '設計を確認する', completed: false },
+      { id: 2, title: 'テストを書く', completed: true },
+    ]) }))
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="quick-capture"]').attributes('aria-labelledby')).toBe('quick-capture-title')
+    expect(wrapper.get('#quick-capture-title').text()).toBe('やることを入力')
+    expect(wrapper.get('[data-testid="task-summary"]').text()).toContain('未完了 1件')
+    expect(wrapper.get('[data-testid="task-summary"]').text()).toContain('完了 1件')
+    expect(wrapper.get('section[aria-labelledby="task-list-title"]')).toBeTruthy()
+    expect(wrapper.get('#task-list-title').text()).toBe('タスク一覧')
+    expect(wrapper.findAll('ul[role="list"] > li')).toHaveLength(2)
+    expect(wrapper.get('[data-testid="delete-task-1"]').attributes('aria-label')).toBe('設計を確認するを削除')
+  })
+
   it('loads tasks once on mount without starting a timer', async () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
     const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Read' }]) })
@@ -232,7 +249,7 @@ describe('TodoList', () => {
     expect(wrapper.get('[data-testid="complete-task-1"]').element.checked).toBe(false)
     expect(wrapper.get('[data-testid="complete-task-2"]').element.checked).toBe(true)
     expect(wrapper.get('[data-testid="complete-task-2"]').attributes('aria-label')).toContain('未完了にする')
-    expect(wrapper.get('[data-testid="complete-task-2"]').element.closest('tr').classList).toContain('todo-list-completed')
+    expect(wrapper.get('[data-testid="complete-task-2"]').element.closest('li').classList).toContain('todo-list-completed')
 
     await wrapper.get('[data-testid="filter-active"]').trigger('click')
     expect(wrapper.text()).toContain('Active')
@@ -344,7 +361,7 @@ describe('TodoList', () => {
     expect(calls).toEqual(['GET initial', 'PATCH', 'GET refresh'])
     expect(wrapper.text()).toContain('After')
     expect(wrapper.get('[data-testid="complete-task-1"]').element.checked).toBe(true)
-    expect(wrapper.get('[data-testid="complete-task-1"]').element.closest('tr').classList).toContain('todo-list-completed')
+    expect(wrapper.get('[data-testid="complete-task-1"]').element.closest('li').classList).toContain('todo-list-completed')
   })
 
   it('cancels editing with button and Escape without a request', async () => {

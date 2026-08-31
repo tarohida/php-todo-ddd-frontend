@@ -1,47 +1,43 @@
 <template>
-  <div class="container">
-    <div class="col-md-12 col-12 col-sm-12">
-      <div class="card">
-        <form class="card-header" @submit.prevent="addTask">
-          <label for="create-task-input-box" class="create-task-input-box-label" aria-hidden="true">&gt;</label>
+  <div class="todo-workspace">
+    <section class="quick-capture" data-testid="quick-capture" aria-labelledby="quick-capture-title">
+      <div class="quick-capture__heading">
+        <div><p class="section-kicker">クイック追加</p><h2 id="quick-capture-title">やることを入力</h2></div>
+        <span aria-hidden="true">＋</span>
+      </div>
+      <form class="quick-capture__form" @submit.prevent="addTask">
+          <label for="create-task-input-box" class="visually-hidden">新しいタスク</label>
           <input
             id="create-task-input-box"
             v-model="newTask"
             type="text"
-            class="custom-control-input create-task-input-box"
-            placeholder="What needs to be done?"
+            class="create-task-input-box"
+            placeholder="例：資料の下書きを仕上げる"
             aria-label="新しいタスク"
             :disabled="isBusy"
           >
           <button
-            class="btn btn-primary add-task-button"
+            class="primary-button add-task-button"
             type="submit"
             data-testid="add-task"
             :disabled="isBusy"
-          >
-            追加
-          </button>
-        </form>
+          >追加する</button>
+      </form>
+    </section>
 
-        <div class="card-body">
-          <div class="d-flex justify-content-end mb-3">
-            <button
-              type="button"
-              class="btn btn-outline-secondary"
-              data-testid="refresh-tasks"
-              :disabled="isBusy"
-              @click="refreshTasks"
-            >
-              一覧を更新
-            </button>
-          </div>
-          <div class="task-filters mb-3" role="group" aria-label="タスクの表示切り替え">
+    <section class="task-panel" aria-labelledby="task-list-title">
+      <header class="task-panel__header">
+        <div><p class="section-kicker">タスク</p><h2 id="task-list-title">タスク一覧</h2></div>
+        <p class="task-summary" data-testid="task-summary"><strong>未完了 {{ activeTaskCount }}件</strong><span>完了 {{ completedTaskCount }}件</span></p>
+      </header>
+      <div class="task-toolbar">
+          <div class="task-filters" role="group" aria-label="タスクの表示切り替え">
             <button
               v-for="option in filterOptions"
               :key="option.value"
               type="button"
-              class="btn btn-sm btn-outline-secondary"
-              :class="{ active: filter === option.value }"
+              class="filter-button"
+              :class="{ 'filter-button--active': filter === option.value }"
               :aria-pressed="filter === option.value"
               :data-testid="`filter-${option.value}`"
               @click="filter = option.value"
@@ -49,38 +45,37 @@
               {{ option.label }}
             </button>
           </div>
-          <p v-if="isLoading" role="status" aria-live="polite">タスクを読み込み中です。</p>
-          <p v-else-if="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</p>
+          <button type="button" class="refresh-button" data-testid="refresh-tasks" :disabled="isBusy" @click="refreshTasks">↻ <span>更新</span></button>
+      </div>
+          <p v-if="isLoading" class="state-message state-message--loading" role="status" aria-live="polite">タスクを読み込み中です。</p>
+          <p v-else-if="errorMessage" class="state-message state-message--error" role="alert">{{ errorMessage }}</p>
           <p
             v-if="successMessage"
-            class="alert alert-success"
+            class="state-message state-message--success"
             role="status"
             aria-live="polite"
             data-testid="success-message"
           >
             {{ successMessage }}
           </p>
-          <p v-if="!isLoading && !errorMessage && tasks.length === 0" data-testid="empty-state">
-            タスクはありません。
+          <p v-if="!isLoading && !errorMessage && tasks.length === 0" class="empty-state" data-testid="empty-state">
+            <strong>まだタスクはありません</strong><span>上の入力欄から、最初のやることを追加しましょう。</span>
           </p>
           <p
             v-else-if="!isLoading && !errorMessage && filteredTasks.length === 0"
-            data-testid="filtered-empty-state"
+            class="empty-state" data-testid="filtered-empty-state"
           >
             {{ filteredEmptyMessage }}
           </p>
 
-          <div v-if="filteredTasks.length > 0" class="table-responsive">
-            <table class="table table-hover">
-              <caption class="visually-hidden">Todoタスク一覧</caption>
-              <tbody>
-                <tr
+          <ul v-if="filteredTasks.length > 0" class="task-list" role="list">
+                <li
                   v-for="task in filteredTasks"
                   :key="task.id"
                   class="todo-list"
-                  :class="{ 'todo-list-completed': task.completed }"
+                  :class="{ 'todo-list-completed': task.completed, 'todo-list--editing': editingTaskId === task.id }"
                 >
-                  <td class="p-1 text-center">
+                  <div class="task-completion">
                     <input
                       type="checkbox"
                       :checked="task.completed"
@@ -89,72 +84,41 @@
                       :disabled="isBusy"
                       @change="requestTaskCompletion(task, $event)"
                     >
-                  </td>
-                  <td class="p-1 text-center">
-                    <button
-                      type="button"
-                      class="btn btn-sm btn-outline-secondary"
-                      :aria-label="`${task.title}を編集`"
-                      :data-testid="`edit-task-${task.id}`"
-                      :disabled="isBusy"
-                      @click="startTitleEdit(task)"
-                    >編集</button>
-                  </td>
-                  <td class="p-1 text-center">
-                    <button
-                      type="button"
-                      class="delete-button"
-                      :aria-label="`${task.title}を削除`"
-                      :data-testid="`delete-task-${task.id}`"
-                      :disabled="isBusy"
-                      @click="deleteTask(task.id)"
-                    >&times;</button>
-                  </td>
-                  <td>
+                  </div>
+                  <div class="task-content">
                     <form
                       v-if="editingTaskId === task.id"
                       class="title-edit-form"
                       :data-testid="`edit-form-${task.id}`"
                       @submit.prevent="saveTitle(task)"
                     >
-                      <label :for="`edit-title-${task.id}`" class="visually-hidden">
-                        {{ task.title }}のタスク名
-                      </label>
-                      <input
-                        :id="`edit-title-${task.id}`"
-                        :ref="`editTitle${task.id}`"
-                        v-model="editingTitle"
-                        type="text"
-                        maxlength="255"
-                        :aria-label="`${task.title}のタスク名`"
-                        :data-testid="`edit-title-${task.id}`"
-                        :disabled="isBusy"
-                        @keydown.enter.prevent="saveTitle(task)"
-                        @keydown.esc.prevent="cancelTitleEdit"
-                      >
-                      <button
-                        type="submit"
-                        class="btn btn-sm btn-primary"
-                        :data-testid="`save-title-${task.id}`"
-                        :disabled="isBusy"
-                      >保存</button>
-                      <button
-                        type="button"
-                        class="btn btn-sm btn-outline-secondary"
-                        :data-testid="`cancel-title-${task.id}`"
-                        :disabled="isBusy"
-                        @click="cancelTitleEdit"
-                      >キャンセル</button>
+                      <label :for="`edit-title-${task.id}`" class="visually-hidden">{{ task.title }}のタスク名</label>
+                      <input :id="`edit-title-${task.id}`" :ref="`editTitle${task.id}`" v-model="editingTitle" type="text" maxlength="255" :aria-label="`${task.title}のタスク名`" :data-testid="`edit-title-${task.id}`" :disabled="isBusy" @keydown.enter.prevent="saveTitle(task)" @keydown.esc.prevent="cancelTitleEdit">
+                      <div class="edit-actions"><button type="submit" class="primary-button compact-button" :data-testid="`save-title-${task.id}`" :disabled="isBusy">保存</button><button type="button" class="quiet-button compact-button" :data-testid="`cancel-title-${task.id}`" :disabled="isBusy" @click="cancelTitleEdit">キャンセル</button></div>
                     </form>
-                    <span v-else>{{ task.title }}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+                    <span v-else class="task-title">{{ task.title }}</span>
+                  </div>
+                  <div class="task-actions">
+                    <button
+                      type="button"
+                      class="icon-button"
+                      :aria-label="`${task.title}を編集`"
+                      :data-testid="`edit-task-${task.id}`"
+                      :disabled="isBusy"
+                      @click="startTitleEdit(task)"
+                    ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.6-10.6a2 2 0 0 0-2.8-2.8L5.4 16.2 4 20Z" /></svg></button>
+                    <button
+                      type="button"
+                      class="icon-button delete-button"
+                      :aria-label="`${task.title}を削除`"
+                      :data-testid="`delete-task-${task.id}`"
+                      :disabled="isBusy"
+                      @click="deleteTask(task.id)"
+                    ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg></button>
+                  </div>
+                </li>
+          </ul>
+    </section>
   </div>
 </template>
 
@@ -190,6 +154,12 @@ export default {
   computed: {
     isBusy() {
       return this.isLoading || this.isMutating
+    },
+    activeTaskCount() {
+      return this.tasks.filter((task) => !task.completed).length
+    },
+    completedTaskCount() {
+      return this.tasks.filter((task) => task.completed).length
     },
     filteredTasks() {
       if (this.filter === 'active') {
@@ -402,75 +372,65 @@ export default {
 </script>
 
 <style scoped>
-.create-task-input-box {
-  position: relative;
-  width: calc(100% - 84px);
-  padding: 12px 12px 12px 70px;
-  border: 1px solid #999;
-  box-shadow: inset 0 -1px 5px 0 rgba(0, 0, 0, 0.2);
-  box-sizing: border-box;
-  color: inherit;
-  font-family: inherit;
-  font-size: 24px;
-  font-weight: inherit;
-  line-height: 1.4em;
-}
-
-.add-task-button {
-  width: 76px;
-  margin-left: 8px;
-}
-
-.create-task-input-box-label {
-  position: absolute;
-  top: 12px;
-  left: 28px;
-  z-index: 1;
-  color: #555;
-  font-size: 32px;
-}
-
-.card-header {
-  position: relative;
-}
-
-.todo-list {
-  position: relative;
-  font-size: 24px;
-}
-
-.todo-list-completed td:last-child {
-  color: #6c757d;
-  text-decoration: line-through;
-}
-
-.task-filters {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.title-edit-form {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.title-edit-form input {
-  min-width: 12rem;
-  flex: 1;
-}
-
-.delete-button {
-  border: 0;
-  background: transparent;
-  color: darkred;
-  font-size: 28px;
-  line-height: 1;
-}
-
-.delete-button:disabled,
-.create-task-input-box:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+.todo-workspace { display: grid; gap: var(--space-6); }
+.quick-capture, .task-panel { border: 1px solid var(--color-border-subtle); border-radius: 1.35rem; background: var(--color-surface); box-shadow: var(--shadow-card); }
+.quick-capture { padding: clamp(1.25rem,4vw,2rem); }
+.quick-capture__heading, .task-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.quick-capture__heading h2, .task-panel__header h2 { margin: 0; color: var(--color-text-strong); font-size: clamp(1.15rem,3vw,1.45rem); letter-spacing: -.025em; }
+.quick-capture__heading > span { color: var(--color-accent-readable); font-size: 1.8rem; font-weight: 300; line-height: 1; }
+.section-kicker { margin: 0 0 var(--space-2); color: var(--color-text-muted); font-size: .66rem; font-weight: 800; letter-spacing: .13em; }
+.quick-capture__form { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); margin-top: var(--space-5); }
+.create-task-input-box, .title-edit-form input { width: 100%; min-width: 0; border: 1px solid var(--color-border); border-radius: .8rem; background: var(--color-surface-raised); color: var(--color-text-strong); }
+.create-task-input-box { min-height: 3.25rem; padding: .75rem 1rem; }
+.create-task-input-box::placeholder { color: var(--color-text-muted); }
+.primary-button, .quiet-button, .filter-button, .refresh-button, .icon-button { border: 0; border-radius: .75rem; font-weight: 700; transition: background-color .16s ease, color .16s ease, transform .16s ease; }
+.primary-button { padding: .75rem 1.15rem; background: var(--color-accent); color: white; }
+.primary-button:hover:not(:disabled) { background: var(--color-accent-hover); transform: translateY(-1px); }
+.task-panel { overflow: hidden; }
+.task-panel__header { padding: clamp(1.25rem,4vw,2rem) clamp(1.25rem,4vw,2rem) var(--space-4); }
+.task-summary { display: flex; gap: var(--space-3); margin: .15rem 0 0; color: var(--color-text-muted); font-size: .8rem; }
+.task-summary strong { color: var(--color-text-strong); }
+.task-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 0 clamp(1.25rem,4vw,2rem) var(--space-5); border-bottom: 1px solid var(--color-border-subtle); }
+.task-filters { display: flex; gap: var(--space-1); padding: .25rem; border-radius: .8rem; background: var(--color-canvas); }
+.filter-button { padding: .5rem .75rem; background: transparent; color: var(--color-text-muted); font-size: .78rem; }
+.filter-button--active { background: var(--color-surface); color: var(--color-accent-readable); box-shadow: var(--shadow-soft); }
+.refresh-button { padding: .5rem .7rem; background: transparent; color: var(--color-text-muted); }
+.refresh-button:hover:not(:disabled), .icon-button:hover:not(:disabled) { background: var(--color-accent-soft); color: var(--color-accent-readable); }
+.task-list { margin: 0; padding: 0; list-style: none; }
+.todo-list { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: var(--space-4); min-height: 4.6rem; padding: 1rem clamp(1.25rem,4vw,2rem); align-items: center; border-bottom: 1px solid var(--color-border-subtle); transition: background-color .16s ease; }
+.todo-list:last-child { border-bottom: 0; }
+.todo-list:hover, .todo-list--editing { background: var(--color-surface-raised); }
+.task-completion input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--color-accent); }
+.task-title { display: block; overflow-wrap: anywhere; color: var(--color-text-strong); line-height: 1.55; }
+.todo-list-completed .task-title { color: var(--color-text-muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.todo-list-completed { background-image: linear-gradient(90deg,var(--color-success-soft),transparent 34%); }
+.task-actions { display: flex; gap: var(--space-1); }
+.icon-button { display: grid; width: 2.5rem; height: 2.5rem; padding: 0; place-items: center; background: transparent; color: var(--color-text-muted); }
+.icon-button svg { width: 1.15rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.delete-button:hover:not(:disabled) { background: var(--color-danger-soft); color: var(--color-danger); }
+.title-edit-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--space-2); }
+.title-edit-form input { min-height: 2.6rem; padding: .55rem .7rem; }
+.edit-actions { display: flex; gap: var(--space-2); }
+.compact-button { padding: .55rem .75rem; font-size: .78rem; }
+.quiet-button { border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); }
+.state-message { margin: var(--space-4) clamp(1.25rem,4vw,2rem); padding: .85rem 1rem; border-radius: .8rem; font-size: .9rem; }
+.state-message--loading { background: var(--color-accent-soft); color: var(--color-accent-readable); }
+.state-message--error { background: var(--color-danger-soft); color: var(--color-danger); }
+.state-message--success { background: var(--color-success-soft); color: var(--color-success); }
+.empty-state { display: grid; gap: var(--space-2); margin: 0; padding: clamp(2.5rem,8vw,4.5rem) 1.5rem; color: var(--color-text-muted); text-align: center; }
+.empty-state strong { color: var(--color-text-strong); font-size: 1.05rem; }
+.empty-state span { font-size: .88rem; }
+@media (max-width: 38rem) {
+  .quick-capture__form { grid-template-columns: 1fr; }
+  .add-task-button { width: 100%; }
+  .task-panel__header { display: grid; }
+  .task-summary { justify-content: flex-start; }
+  .task-toolbar { align-items: stretch; }
+  .task-filters { flex: 1; }
+  .filter-button { flex: 1; padding-inline: .45rem; }
+  .refresh-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+  .todo-list { grid-template-columns: auto minmax(0,1fr); gap: var(--space-3); }
+  .task-actions { grid-column: 2; }
+  .title-edit-form { grid-template-columns: 1fr; }
 }
 </style>
