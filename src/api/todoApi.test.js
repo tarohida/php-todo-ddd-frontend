@@ -80,6 +80,16 @@ describe('todo API client', () => {
     expect(httpClient.patch).toHaveBeenCalledWith('/tasks/42', { completed: true })
   })
 
+  it('updates a title with JSON on the encoded canonical endpoint', async () => {
+    const httpClient = createHttpClient()
+    const task = { id: 42, title: 'renamed', completed: true }
+    httpClient.patch.mockResolvedValue({ status: 200, data: { task } })
+    const api = createTodoApi({ baseUrl: 'http://localhost:8081', httpClient })
+
+    await expect(api.updateTitle('1/2 ?', 'renamed')).resolves.toEqual(task)
+    expect(httpClient.patch).toHaveBeenCalledWith('/tasks/1%2F2%20%3F/title', { title: 'renamed' })
+  })
+
   it.each([
     [400, 'validation', '入力内容を確認してください。'],
     [404, 'not-found', '対象のタスクが見つかりません。'],
@@ -108,6 +118,7 @@ describe('todo API client', () => {
     ['list', { status: 201, data: [] }],
     ['create', { status: 200, data: { task: { id: 1, title: 'task', completed: false } } }],
     ['updateCompleted', { status: 204, data: { task: { id: 1, title: 'task', completed: true } } }],
+    ['updateTitle', { status: 204, data: { task: { id: 1, title: 'task', completed: true } } }],
     ['delete', { status: 200, data: '' }],
     ['delete', { status: 204, data: { unexpected: true } }],
   ])('rejects an invalid successful %s HTTP contract', async (method, response) => {
@@ -190,6 +201,7 @@ describe('todo API client', () => {
     ['create', { status: 201, data: { task: { id: 1 } } }],
     ['create', { status: 201, data: { task: { id: 0, title: 'wrong id', completed: false } } }],
     ['updateCompleted', { status: 200, data: { task: { id: 1, title: 'task', completed: 'yes' } } }],
+    ['updateTitle', { status: 200, data: { task: { id: 1, title: 'task' } } }],
   ])('rejects a malformed successful %s response', async (method, response) => {
     const httpClient = createHttpClient()
     httpClient.get.mockResolvedValue(response)
