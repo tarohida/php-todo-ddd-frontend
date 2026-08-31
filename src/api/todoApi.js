@@ -52,6 +52,7 @@ function isTask(value) {
     && value.id > 0
     && typeof value.title === 'string'
     && value.title.trim() !== ''
+    && typeof value.completed === 'boolean'
 }
 
 async function request(action) {
@@ -84,6 +85,28 @@ export function createTodoApi({ baseUrl, httpClient } = {}) {
     async create(title) {
       const response = await request(() => http.post('/tasks', { title }))
       if (response.status !== 201 || !isTask(response.data?.task)) {
+        throw contractError()
+      }
+      return response.data.task
+    },
+
+    async updateCompleted(id, completed) {
+      const response = await request(() => http.patch(
+        `/tasks/${encodeURIComponent(id)}`,
+        { completed },
+      ))
+      if (response.status !== 200 || !isTask(response.data?.task)) {
+        throw contractError()
+      }
+      return response.data.task
+    },
+
+    async updateTitle(id, title) {
+      const response = await request(() => http.patch(
+        `/tasks/${encodeURIComponent(id)}/title`,
+        { title },
+      ))
+      if (response.status !== 200 || !isTask(response.data?.task)) {
         throw contractError()
       }
       return response.data.task
