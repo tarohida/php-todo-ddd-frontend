@@ -1,10 +1,6 @@
 <template>
   <div class="todo-workspace">
-    <section class="quick-capture" data-testid="quick-capture" aria-labelledby="quick-capture-title">
-      <div class="quick-capture__heading">
-        <div><p class="section-kicker">クイック追加</p><h2 id="quick-capture-title">やることを入力</h2></div>
-        <span aria-hidden="true">＋</span>
-      </div>
+    <section class="quick-capture" data-testid="quick-capture" aria-label="タスクを追加">
       <form class="quick-capture__form" @submit.prevent="addTask">
           <label for="create-task-input-box" class="visually-hidden">新しいタスク</label>
           <input
@@ -27,7 +23,7 @@
 
     <section class="task-panel" aria-labelledby="task-list-title">
       <header class="task-panel__header">
-        <div><p class="section-kicker">タスク</p><h2 id="task-list-title">タスク一覧</h2></div>
+        <h2 id="task-list-title">タスク</h2>
         <p class="task-summary" data-testid="task-summary"><strong>未完了 {{ activeTaskCount }}件</strong><span>完了 {{ completedTaskCount }}件</span></p>
       </header>
       <div class="task-toolbar">
@@ -45,7 +41,7 @@
               {{ option.label }}
             </button>
           </div>
-          <button type="button" class="refresh-button" data-testid="refresh-tasks" :disabled="isBusy" @click="refreshTasks">↻ <span>更新</span></button>
+          <button type="button" class="refresh-button" aria-label="タスクを更新" data-testid="refresh-tasks" :disabled="isBusy" @click="refreshTasks">↻</button>
       </div>
           <p v-if="isLoading" class="state-message state-message--loading" role="status" aria-live="polite">タスクを読み込み中です。</p>
           <p v-else-if="errorMessage" class="state-message state-message--error" role="alert">{{ errorMessage }}</p>
@@ -59,7 +55,7 @@
             {{ successMessage }}
           </p>
           <p v-if="!isLoading && !errorMessage && tasks.length === 0" class="empty-state" data-testid="empty-state">
-            <strong>まだタスクはありません</strong><span>上の入力欄から、最初のやることを追加しましょう。</span>
+            タスクはありません。
           </p>
           <p
             v-else-if="!isLoading && !errorMessage && filteredTasks.length === 0"
@@ -375,11 +371,9 @@ export default {
 .todo-workspace { display: grid; gap: var(--space-6); }
 .quick-capture, .task-panel { border: 1px solid var(--color-border-subtle); border-radius: 1.35rem; background: var(--color-surface); box-shadow: var(--shadow-card); }
 .quick-capture { padding: clamp(1.25rem,4vw,2rem); }
-.quick-capture__heading, .task-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
-.quick-capture__heading h2, .task-panel__header h2 { margin: 0; color: var(--color-text-strong); font-size: clamp(1.15rem,3vw,1.45rem); letter-spacing: -.025em; }
-.quick-capture__heading > span { color: var(--color-accent-readable); font-size: 1.8rem; font-weight: 300; line-height: 1; }
-.section-kicker { margin: 0 0 var(--space-2); color: var(--color-text-muted); font-size: .66rem; font-weight: 800; letter-spacing: .13em; }
-.quick-capture__form { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); margin-top: var(--space-5); }
+.task-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.task-panel__header h2 { margin: 0; color: var(--color-text-strong); font-size: clamp(1.15rem,3vw,1.45rem); letter-spacing: -.025em; }
+.quick-capture__form { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); }
 .create-task-input-box, .title-edit-form input { width: 100%; min-width: 0; border: 1px solid var(--color-border); border-radius: .8rem; background: var(--color-surface-raised); color: var(--color-text-strong); }
 .create-task-input-box { min-height: 3.25rem; padding: .75rem 1rem; }
 .create-task-input-box::placeholder { color: var(--color-text-muted); }
@@ -418,8 +412,6 @@ export default {
 .state-message--error { background: var(--color-danger-soft); color: var(--color-danger); }
 .state-message--success { background: var(--color-success-soft); color: var(--color-success); }
 .empty-state { display: grid; gap: var(--space-2); margin: 0; padding: clamp(2.5rem,8vw,4.5rem) 1.5rem; color: var(--color-text-muted); text-align: center; }
-.empty-state strong { color: var(--color-text-strong); font-size: 1.05rem; }
-.empty-state span { font-size: .88rem; }
 @media (max-width: 38rem) {
   .quick-capture__form { grid-template-columns: 1fr; }
   .add-task-button { width: 100%; }
@@ -428,7 +420,6 @@ export default {
   .task-toolbar { align-items: stretch; }
   .task-filters { flex: 1; }
   .filter-button { flex: 1; padding-inline: .45rem; }
-  .refresh-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
   .todo-list { grid-template-columns: auto minmax(0,1fr); gap: var(--space-3); }
   .task-actions { grid-column: 2; }
   .title-edit-form { grid-template-columns: 1fr; }

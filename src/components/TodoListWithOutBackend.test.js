@@ -8,10 +8,9 @@ describe('TodoListWithOutBackend', () => {
     const wrapper = mount(TodoListWithOutBackend)
 
     expect(wrapper.get('section[aria-labelledby="offline-capture-title"]')).toBeTruthy()
-    expect(wrapper.get('#offline-capture-title').text()).toBe('やることを入力')
-    expect(wrapper.get('#offline-list-title').text()).toBe('タスク一覧')
-    expect(wrapper.text()).toContain('ローカルモード')
-    expect(wrapper.get('.offline-empty').text()).toBe('まだタスクはありません。')
+    expect(wrapper.get('#offline-capture-title').text()).toBe('タスクを追加')
+    expect(wrapper.get('#offline-list-title').text()).toBe('タスク')
+    expect(wrapper.get('.offline-empty').text()).toBe('タスクはありません。')
   })
 
   it('trims and adds a task, then deletes it with an accessible control', async () => {
@@ -26,6 +25,6 @@ describe('TodoListWithOutBackend', () => {
     expect(wrapper.get('#offline-task-input').element.value).toBe('')
 
     await wrapper.get('li button').trigger('click')
-    expect(wrapper.get('.offline-empty').text()).toBe('まだタスクはありません。')
+    expect(wrapper.get('.offline-empty').text()).toBe('タスクはありません。')
   })
 })

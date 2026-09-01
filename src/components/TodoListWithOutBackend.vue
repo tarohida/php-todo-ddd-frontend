@@ -1,13 +1,13 @@
 <template>
   <div class="offline-workspace">
     <section class="offline-capture" aria-labelledby="offline-capture-title">
-      <p class="section-kicker">ローカルモード</p><h2 id="offline-capture-title">やることを入力</h2>
+      <h2 id="offline-capture-title">タスクを追加</h2>
       <p class="offline-note">API未接続のため、この画面を閉じると内容は消去されます。</p>
       <form class="offline-form" @submit.prevent="addTask"><label class="visually-hidden" for="offline-task-input">新しいタスク</label><input id="offline-task-input" v-model="newTask" type="text" placeholder="例：読みたい本をメモする"><button type="submit">追加する</button></form>
     </section>
     <section class="offline-list-panel" aria-labelledby="offline-list-title">
-      <header><div><p class="section-kicker">タスク</p><h2 id="offline-list-title">タスク一覧</h2></div><span>{{ tasks.length }}件</span></header>
-      <p v-if="tasks.length === 0" class="offline-empty">まだタスクはありません。</p>
+      <header><h2 id="offline-list-title">タスク</h2><span>{{ tasks.length }}件</span></header>
+      <p v-if="tasks.length === 0" class="offline-empty">タスクはありません。</p>
       <ul v-else role="list"><li v-for="(task, index) in tasks" :key="`${task}-${index}`"><span>{{ task }}</span><button type="button" :aria-label="`${task}を削除`" @click="deleteTask(index)">削除</button></li></ul>
     </section>
   </div>
@@ -18,7 +18,6 @@ export default { name: 'TodoListWithOutBackend', data() { return { tasks: [], ne
 <style scoped>
 .offline-workspace { display: grid; gap: var(--space-6); }
 .offline-capture, .offline-list-panel { padding: clamp(1.25rem,4vw,2rem); border: 1px solid var(--color-border-subtle); border-radius: 1.35rem; background: var(--color-surface); box-shadow: var(--shadow-card); }
-.section-kicker { margin: 0 0 var(--space-2); color: var(--color-text-muted); font-size: .66rem; font-weight: 800; letter-spacing: .13em; }
 h2 { margin: 0; color: var(--color-text-strong); font-size: 1.35rem; }
 .offline-note { margin: var(--space-3) 0 0; color: var(--color-text-muted); font-size: .85rem; }
 .offline-form { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); margin-top: var(--space-5); }
