@@ -9,5 +9,6 @@ describe('Navigation', () => {
     expect(wrapper.text()).not.toContain('ログアウト')
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.get('nav').attributes('aria-label')).toBe('メインナビゲーション')
+    expect(wrapper.get('[data-testid="app-title"]').text()).toBe('Todoホーム')
   })
 })
