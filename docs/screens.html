@@ -5,111 +5,133 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Todo UI — 画面一覧・遷移</title>
   <style>
-    :root { color-scheme: light; --ink:#172033; --muted:#59657a; --line:#dce2ec; --panel:#f7f9fc; --accent:#2563eb; --danger:#b42318; }
+    :root { color-scheme:light; --ink:#23242a; --muted:#656873; --line:#e3e3e8; --panel:#f7f7fa; --accent:#4f46d8; --danger:#b4233d; --success:#217a52; }
     * { box-sizing:border-box; }
     body { margin:0; color:var(--ink); background:#fff; font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif; }
-    main { width:min(1120px,calc(100% - 32px)); margin:auto; padding:48px 0 72px; }
+    main { width:min(1180px,calc(100% - 32px)); margin:auto; padding:48px 0 72px; }
     h1,h2,h3 { line-height:1.25; }
-    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,3.5rem); }
+    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,3.5rem); letter-spacing:-.035em; }
     h2 { margin-top:52px; padding-bottom:10px; border-bottom:1px solid var(--line); }
     .lead,.meta { color:var(--muted); }
     .screens { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
-    article { overflow:hidden; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
-    article img { display:block; width:100%; height:320px; object-fit:contain; background:white; border-bottom:1px solid var(--line); }
+    article { overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--panel); }
+    article img { display:block; width:100%; height:340px; object-fit:contain; background:white; border-bottom:1px solid var(--line); }
     article div { padding:18px; }
     article h3 { margin:0 0 6px; }
     article p { margin:0; color:var(--muted); }
     article dl { display:grid; grid-template-columns:max-content 1fr; gap:5px 10px; margin:14px 0 0; font-size:.92rem; }
     article dt { font-weight:700; }
     article dd { margin:0; color:var(--muted); }
-    table { width:100%; border-collapse:collapse; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; min-width:760px; border-collapse:collapse; }
     th,td { padding:12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
     th { background:var(--panel); }
-    code { padding:.15em .35em; border-radius:4px; background:#eef2f7; }
-    .flow { overflow-x:auto; padding:20px; border:1px solid var(--line); border-radius:14px; }
-    .flow svg { display:block; width:100%; min-width:760px; height:auto; }
-    .node { fill:white; stroke:#8da0bd; stroke-width:2; }
-    .node-error { fill:#fff1f0; stroke:var(--danger); }
+    code { padding:.15em .35em; border-radius:4px; background:#eeeeF8; overflow-wrap:anywhere; }
+    .flow { overflow-x:auto; padding:20px; border:1px solid var(--line); border-radius:16px; }
+    .flow svg { display:block; width:100%; min-width:920px; height:auto; }
+    .node { fill:white; stroke:#9699a7; stroke-width:2; }
+    .node-accent { fill:#f0efff; stroke:var(--accent); }
+    .node-error { fill:#fff0f3; stroke:var(--danger); }
     .arrow { fill:none; stroke:var(--accent); stroke-width:2.5; marker-end:url(#arrowhead); }
     .error-arrow { stroke:var(--danger); }
-    .label { fill:var(--ink); font:600 16px system-ui,sans-serif; text-anchor:middle; dominant-baseline:middle; }
-    .edge-label { fill:var(--muted); font:14px system-ui,sans-serif; text-anchor:middle; }
+    .label { fill:var(--ink); font:600 15px system-ui,sans-serif; text-anchor:middle; dominant-baseline:middle; }
+    .small-label { fill:var(--ink); font:600 13px system-ui,sans-serif; text-anchor:middle; dominant-baseline:middle; }
+    .edge-label { fill:var(--muted); font:13px system-ui,sans-serif; text-anchor:middle; }
     footer { margin-top:48px; color:var(--muted); font-size:.9rem; }
-    @media (max-width:720px) { main { padding-top:28px; } .screens { grid-template-columns:1fr; } article img { height:260px; } table { font-size:.9rem; } th,td { padding:8px; } }
+    footer a { color:var(--accent); }
+    @media (max-width:720px) { main { padding-top:28px; } .screens { grid-template-columns:1fr; } article img { height:290px; } }
   </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Todo UI 画面資料</h1>
-    <p class="lead">認証なしTodo Web APIを利用する単一画面アプリの、主要状態・API対応・操作フローです。</p>
-    <p class="meta">撮影日: 2026-08-28 / CSS viewport・PNG出力: Desktop 1440×900・Mobile 390×844</p>
+    <p class="lead">認証なし Todo Web API を利用する単一画面アプリの主要状態、API 対応、操作フローです。</p>
+    <p class="meta">撮影日: 2026-09-04 / CSS viewport・PNG出力: Desktop 1440×900・Mobile 390×844</p>
   </header>
 
   <section aria-labelledby="catalog">
     <h2 id="catalog">画面一覧</h2>
     <div class="screens">
       <article>
-        <img src="assets/screens/todo-empty-desktop.png" alt="タスクが0件のデスクトップ画面">
-        <div><h3>01 空状態</h3><p>初期取得が成功し、タスクが0件の場合。「タスクはありません。」と次の操作を明示します。</p><dl><dt>目的</dt><dd>未登録状態の案内</dd><dt>主操作</dt><dd>タイトル入力／一覧更新</dd><dt>API</dt><dd><code>GET /tasks</code></dd></dl></div>
+        <img src="assets/screens/todo-empty-desktop.png" alt="モダンなカードUIでタスクが0件のデスクトップ画面">
+        <div><h3>01 空状態</h3><p>初期取得が成功し、登録済みタスクがない状態です。追加欄、件数、フィルター、更新操作を同じ画面に保ちます。</p><dl><dt>主操作</dt><dd>タイトル入力／一覧更新</dd><dt>API</dt><dd><code>GET /tasks</code></dd></dl></div>
       </article>
       <article>
-        <img src="assets/screens/todo-input-mobile.png" alt="新しいタスクを入力中のモバイル画面">
-        <div><h3>02 入力中</h3><p>タイトルを入力した状態。送信すると作成APIを呼び、成功後に一覧を再取得します。</p><dl><dt>目的</dt><dd>新規タスクの登録</dd><dt>主操作</dt><dd>「追加」で送信</dd><dt>API</dt><dd><code>POST /tasks</code> → <code>GET /tasks</code></dd></dl></div>
+        <img src="assets/screens/todo-input-mobile.png" alt="新しいタスク名を入力中のモバイル画面">
+        <div><h3>02 新規入力</h3><p>モバイルでは入力欄と追加ボタンを縦に配置します。成功後だけ入力を空にし、最新一覧を再取得します。</p><dl><dt>主操作</dt><dd>「追加する」で送信</dd><dt>API</dt><dd><code>POST /tasks</code> → <code>GET /tasks</code></dd></dl></div>
       </article>
       <article>
-        <img src="assets/screens/todo-list-desktop.png" alt="作成済みタスクと成功通知があるデスクトップ画面">
-        <div><h3>03 作成済み一覧</h3><p>作成成功メッセージと最新一覧。各行の×ボタンから対象タスクを削除できます。</p><dl><dt>目的</dt><dd>登録済みタスクの確認</dd><dt>主操作</dt><dd>×で削除／一覧更新</dd><dt>API</dt><dd><code>DELETE /tasks/{id}</code> → <code>GET /tasks</code></dd></dl></div>
+        <img src="assets/screens/todo-list-desktop.png" alt="未完了と完了済みタスクが並ぶデスクトップ画面">
+        <div><h3>03 タスク一覧</h3><p>未完了・完了件数とフィルターを表示し、チェックボックスで完了状態を切り替えます。</p><dl><dt>主操作</dt><dd>完了切替／編集／削除／絞り込み</dd><dt>API</dt><dd><code>PATCH /tasks/{id}</code> → <code>GET /tasks</code></dd></dl></div>
       </article>
       <article>
-        <img src="assets/screens/todo-api-error-mobile.png" alt="API接続エラーを表示したモバイル画面">
-        <div><h3>04 APIエラー</h3><p>通信失敗時は既存一覧を保持しつつエラーを表示。失敗した操作を再実行できます。</p><dl><dt>目的</dt><dd>失敗内容と復帰手段の提示</dd><dt>主操作</dt><dd>一覧更新／追加／削除を再試行</dd><dt>API</dt><dd>失敗した <code>GET</code>・<code>POST</code>・<code>DELETE</code></dd></dl></div>
+        <img src="assets/screens/todo-edit-mobile.png" alt="タスク名を編集中のモバイル画面">
+        <div><h3>04 タイトル編集</h3><p>対象行だけを編集フォームへ切り替えます。保存成功後に一覧を再取得し、失敗時は入力内容を保持します。</p><dl><dt>主操作</dt><dd>保存／キャンセル</dd><dt>API</dt><dd><code>PATCH /tasks/{id}/title</code> → <code>GET /tasks</code></dd></dl></div>
+      </article>
+      <article>
+        <img src="assets/screens/todo-api-error-mobile.png" alt="API通信エラーを表示したモバイル画面">
+        <div><h3>05 API通信エラー</h3><p>API要求が失敗した状態です。保持できる一覧や入力は残し、同じ操作または一覧更新から再試行します。</p><dl><dt>主操作</dt><dd>失敗した操作を再試行</dd><dt>API</dt><dd>失敗した <code>GET</code>・<code>POST</code>・<code>PATCH</code>・<code>DELETE</code></dd></dl></div>
+      </article>
+      <article>
+        <img src="assets/screens/todo-config-error-mobile.png" alt="API URL未設定の解決手順だけを表示したモバイル画面">
+        <div><h3>06 設定エラー</h3><p>API URL が空または未設定の状態です。タスク操作やローカル代替データは表示せず、READMEの起動コマンドでコンテナを再作成する手順だけを示します。</p><dl><dt>主操作</dt><dd>なし（設定後にコンテナ再作成）</dd><dt>API</dt><dd>呼び出さない</dd></dl></div>
       </article>
     </div>
   </section>
 
   <section aria-labelledby="api-map">
-    <h2 id="api-map">操作とAPIの対応</h2>
-    <table>
-      <thead><tr><th>操作</th><th>API</th><th>成功時</th><th>失敗時</th></tr></thead>
-      <tbody>
-        <tr><td>初期表示／一覧を更新</td><td><code>GET /tasks</code></td><td><code>200</code> 一覧または空状態</td><td>エラーを表示し再試行可能</td></tr>
-        <tr><td>追加</td><td><code>POST /tasks</code></td><td><code>201</code> 後に一覧を再取得</td><td>入力を保持してエラー表示</td></tr>
-        <tr><td>削除</td><td><code>DELETE /tasks/{id}</code></td><td><code>204</code> 後に一覧を再取得</td><td>既存一覧を保持してエラー表示</td></tr>
-      </tbody>
-    </table>
+    <h2 id="api-map">操作と API の対応</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>操作</th><th>API / payload</th><th>成功時</th><th>失敗時</th></tr></thead>
+        <tbody>
+          <tr><td>初期表示／一覧更新</td><td><code>GET /tasks</code></td><td><code>200</code> の一覧または空状態</td><td>通信エラーを表示し、更新で再試行</td></tr>
+          <tr><td>追加</td><td><code>POST /tasks</code><br><code>{ "title": "..." }</code></td><td><code>201</code> 後に一覧を再取得</td><td>入力を保持してエラー表示</td></tr>
+          <tr><td>完了状態を切替</td><td><code>PATCH /tasks/{id}</code><br><code>{ "completed": true | false }</code></td><td><code>200</code> 後に一覧を再取得</td><td>表示状態を変えずにエラー表示</td></tr>
+          <tr><td>タイトルを保存</td><td><code>PATCH /tasks/{id}/title</code><br><code>{ "title": "..." }</code></td><td><code>200</code> 後に一覧を再取得し編集終了</td><td>編集内容を保持してエラー表示</td></tr>
+          <tr><td>削除</td><td><code>DELETE /tasks/{id}</code></td><td><code>204</code> 後に一覧を再取得</td><td>一覧を保持してエラー表示</td></tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section aria-labelledby="flow-title">
     <h2 id="flow-title">画面遷移・状態フロー</h2>
     <div class="flow">
-      <svg viewBox="0 0 1100 540" role="img" aria-labelledby="flow-svg-title flow-svg-desc">
-        <title id="flow-svg-title">Todo画面の操作フロー</title>
-        <desc id="flow-svg-desc">初期表示から一覧、作成、削除、エラーと再試行への流れ</desc>
+      <svg viewBox="0 0 1180 620" role="img" aria-labelledby="flow-svg-title flow-svg-desc">
+        <title id="flow-svg-title">Todo画面の設定確認と操作フロー</title>
+        <desc id="flow-svg-desc">初期表示でAPI URLを確認し、未設定なら操作できない設定エラーへ、設定済みなら一覧へ進む。一覧では追加、完了切替、タイトル編集、削除を行い、成功後は一覧を再取得し、通信失敗時はAPIエラーを表示する。</desc>
         <defs><marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"/></marker></defs>
-        <rect class="node" x="20" y="45" width="150" height="70" rx="12"/><text class="label" x="95" y="80">初期表示</text>
-        <rect class="node" x="240" y="45" width="180" height="70" rx="12"/><text class="label" x="330" y="80">一覧／空状態</text>
-        <rect class="node" x="500" y="25" width="170" height="70" rx="12"/><text class="label" x="585" y="60">タイトル入力</text>
-        <rect class="node" x="500" y="135" width="170" height="70" rx="12"/><text class="label" x="585" y="170">削除対象を選択</text>
-        <rect class="node node-error" x="100" y="330" width="190" height="70" rx="12"/><text class="label" x="195" y="365">GET エラー</text>
-        <rect class="node node-error" x="450" y="330" width="190" height="70" rx="12"/><text class="label" x="545" y="365">POST エラー</text>
-        <rect class="node node-error" x="800" y="330" width="190" height="70" rx="12"/><text class="label" x="895" y="365">DELETE エラー</text>
-        <path class="arrow" d="M170 80 H240"/><text class="edge-label" x="205" y="67">GET</text>
-        <path class="arrow" d="M420 65 H500"/><text class="edge-label" x="460" y="52">入力</text>
-        <path class="arrow" d="M585 95 V112 Q585 120 565 120 H450 Q430 120 430 95 V82"/><text class="edge-label" x="510" y="112">POST成功 → GET</text>
-        <path class="arrow" d="M420 93 Q455 110 500 155"/><text class="edge-label" x="458" y="139">×</text>
-        <path class="arrow" d="M500 185 Q460 215 430 175 Q415 155 420 113"/><text class="edge-label" x="470" y="213">DELETE成功 → GET</text>
-        <path class="arrow error-arrow" d="M95 115 V275 Q95 305 130 330"/><text class="edge-label" x="130" y="250">GET失敗</text>
-        <path class="arrow error-arrow" d="M585 95 V260 Q585 290 560 330"/><text class="edge-label" x="630" y="255">POST失敗</text>
-        <path class="arrow error-arrow" d="M670 170 H760 Q795 170 815 205 L875 330"/><text class="edge-label" x="800" y="195">DELETE失敗</text>
-        <path class="arrow" d="M195 330 V285 Q195 260 225 240 L300 115"/><text class="edge-label" x="220" y="280">一覧更新でGET再試行</text>
-        <path class="arrow" d="M545 330 V285 Q545 260 570 240 L585 205"/><text class="edge-label" x="600" y="280">入力を保持し追加を再試行</text>
-        <path class="arrow" d="M895 330 V285 Q895 250 850 230 L670 185"/><text class="edge-label" x="835" y="275">一覧を保持し削除を再試行</text>
+
+        <rect class="node" x="20" y="80" width="140" height="64" rx="12"/><text class="label" x="90" y="112">初期表示</text>
+        <rect class="node node-accent" x="215" y="80" width="180" height="64" rx="12"/><text class="small-label" x="305" y="104">API URL</text><text class="small-label" x="305" y="124">設定確認</text>
+        <rect class="node node-error" x="455" y="15" width="210" height="76" rx="12"/><text class="small-label" x="560" y="45">未設定: 設定エラー</text><text class="small-label" x="560" y="65">操作・API呼出しなし</text>
+        <rect class="node" x="455" y="130" width="210" height="64" rx="12"/><text class="label" x="560" y="162">GET /tasks</text>
+        <rect class="node node-accent" x="735" y="130" width="210" height="64" rx="12"/><text class="label" x="840" y="162">一覧／空状態</text>
+
+        <rect class="node" x="20" y="310" width="210" height="70" rx="12"/><text class="small-label" x="125" y="337">新規入力・追加</text><text class="small-label" x="125" y="357">POST /tasks</text>
+        <rect class="node" x="280" y="310" width="210" height="70" rx="12"/><text class="small-label" x="385" y="337">完了切替</text><text class="small-label" x="385" y="357">PATCH /tasks/{id}</text>
+        <rect class="node" x="540" y="310" width="230" height="70" rx="12"/><text class="small-label" x="655" y="337">タイトル編集</text><text class="small-label" x="655" y="357">PATCH /tasks/{id}/title</text>
+        <rect class="node" x="820" y="310" width="210" height="70" rx="12"/><text class="small-label" x="925" y="337">削除</text><text class="small-label" x="925" y="357">DELETE /tasks/{id}</text>
+        <rect class="node node-error" x="455" y="505" width="270" height="72" rx="12"/><text class="small-label" x="590" y="532">API通信エラー</text><text class="small-label" x="590" y="552">入力・一覧を保持して再試行</text>
+
+        <path class="arrow" d="M160 112 H215"/><path class="arrow error-arrow" d="M395 100 Q420 53 455 53"/><text class="edge-label" x="425" y="43">空／未設定</text>
+        <path class="arrow" d="M395 125 Q420 162 455 162"/><text class="edge-label" x="425" y="167">設定済み</text>
+        <path class="arrow" d="M665 162 H735"/>
+
+        <path class="arrow" d="M800 194 Q660 245 125 310"/><path class="arrow" d="M825 194 Q700 252 385 310"/><path class="arrow" d="M855 194 Q820 250 655 310"/><path class="arrow" d="M885 194 Q920 250 925 310"/>
+        <path class="arrow" d="M125 310 Q170 245 735 175"/><path class="arrow" d="M385 310 Q470 245 770 194"/><path class="arrow" d="M655 310 Q700 245 825 194"/><path class="arrow" d="M925 310 Q930 245 890 194"/>
+        <text class="edge-label" x="590" y="252">操作を選択</text><text class="edge-label" x="590" y="285">成功 → GET /tasks で最新化</text>
+
+        <path class="arrow error-arrow" d="M560 194 V505"/><path class="arrow error-arrow" d="M125 380 Q190 470 455 530"/><path class="arrow error-arrow" d="M385 380 Q420 450 500 505"/><path class="arrow error-arrow" d="M655 380 Q640 450 625 505"/><path class="arrow error-arrow" d="M925 380 Q850 470 725 535"/>
+        <text class="edge-label" x="760" y="455">各 API が失敗</text>
+        <path class="arrow" d="M725 555 Q980 585 1010 470 Q1030 390 945 175"/><text class="edge-label" x="970" y="570">同じ操作／更新で再試行</text>
       </svg>
     </div>
   </section>
 
-  <footer>このHTMLはビルド不要です。リポジトリ直下から <code>open docs/screens.html</code> で閲覧できます。</footer>
+  <footer>コンポーネントの境界と次回の分割手順は <a href="component-responsibilities.md">ContentArea / TodoList 責務分割方針</a> を参照してください。</footer>
 </main>
 </body>
 </html>

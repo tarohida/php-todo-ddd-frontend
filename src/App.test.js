@@ -22,7 +22,7 @@ function mountApp() {
 }
 
 describe('App API configuration', () => {
-  it.each([undefined, '', '   '])('uses backend-less mode for %s', (value) => {
+  it.each([undefined, '', '   '])('does not create an API client for %s', (value) => {
     vi.stubEnv('VITE_BACKEND_URL', value)
     const wrapper = mountApp()
 
