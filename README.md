@@ -1,6 +1,23 @@
 # php-todo-ddd-frontend
 
+[![Frontend CI](https://github.com/tarohida/php-todo-ddd-frontend/actions/workflows/frontend-ci.yml/badge.svg?branch=work%2F20260826-todo-web-api)](https://github.com/tarohida/php-todo-ddd-frontend/actions/workflows/frontend-ci.yml)
+
 Vue 3 / Vite で構築した todo Web API のフロントエンドです。認証なしのバックエンド API と組み合わせて動作します。
+
+## CI
+
+`work/20260826-todo-web-api` への push と、このブランチを対象とする pull request では GitHub Actions が品質ゲートを実行します。Node.js 24 上で `package-lock.json` に固定された依存関係をクリーンインストールし、Vitest、ESLint、本番ビルド、high 以上の依存関係監査を検証します。Docker イメージも既存キャッシュを使わず、ベースイメージを取得し直してビルドします。
+
+同じ検証をローカルで実行するには、リポジトリのルートから次のコマンドを順番に実行します。
+
+```bash
+npm ci
+npm test
+npm run lint
+npm run build
+npm audit --audit-level=high
+docker build --pull --no-cache --tag php-todo-ddd-frontend:ci .
+```
 
 ## Docker で起動
 
