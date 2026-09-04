@@ -23,9 +23,17 @@ docker compose --env-file .env.local up --build
 
 http://localhost:8080 を開きます。`VITE_BACKEND_URL` はコンテナ内部の API URL ではなく、ブラウザから到達できる公開 URL を指定します。
 
-`VITE_` で始まるすべての値はブラウザへ公開され、開発サーバーの起動時またはビルド時にコードへ埋め込まれます。パスワード、トークンなどの秘密情報を設定しないでください。値を変更した場合は、開発コンテナの再起動または本番アセットの再ビルドが必要です。Compose はソースをbind mountし、依存関係だけをDocker volumeへ保持するため、ホスト側の編集がHMRで反映されます。
+`VITE_BACKEND_URL` が空または未設定の場合、タスク操作は表示されず設定エラーになります。`.env.local` を修正した後、次のコマンドでフロントエンドコンテナを再作成してください。
 
-依存関係を含めて開発環境を作り直す場合は、次のコマンドでコンテナと`node_modules` volumeを削除してから再起動します。
+```bash
+docker compose --env-file .env.local up -d --force-recreate
+```
+
+ブラウザ内だけに保存される代替タスクは作成しません。
+
+`VITE_` で始まるすべての値はブラウザへ公開され、開発サーバーの起動時またはビルド時にコードへ埋め込まれます。パスワード、トークンなどの秘密情報を設定しないでください。値を変更した場合は、開発コンテナの再作成または本番アセットの再ビルドが必要です。Compose はソースをbind mountし、依存関係だけをDocker volumeへ保持するため、ホスト側の編集がHMRで反映されます。
+
+依存関係を含めて開発環境を作り直す場合は、次のコマンドでコンテナと`node_modules` volumeを削除してから再作成します。
 
 ```bash
 docker compose down -v
@@ -40,7 +48,7 @@ docker compose --env-file .env.local up --build
 
 - Node.js 24.20.0 LTS / npm 11.19.0（公式 Node イメージ同梱版）
 - Vue 3.5.42 / Vite 8.2.2
-- Axios 1.20.0 / Bootstrap 5.3.8
+- Axios 1.20.0
 - ESLint 10.9.1 / eslint-plugin-vue 10.10.0
 
 Node.js 24 は Active LTS です。保守モードの Vue CLI 4 から Vue 公式が推奨する Vite ベースへ移行しました。参照: [Node.js releases](https://nodejs.org/en/about/previous-releases)、[Node.js v24 archive](https://nodejs.org/en/download/archive/v24)、[Vue CLI maintenance notice](https://cli.vuejs.org/)、[Vite guide](https://vite.dev/guide/)。
@@ -71,7 +79,7 @@ npm run lint
 
 ## 画面資料
 
-主要画面、APIとの対応、画面遷移は [docs/screens.html](docs/screens.html) にまとめています。ビルドは不要で、次のコマンドからブラウザで確認できます。
+主要画面、APIとの対応、画面遷移は [docs/screens.html](docs/screens.html)、コンポーネント境界は [docs/component-responsibilities.md](docs/component-responsibilities.md) にまとめています。画面資料はビルド不要で、次のコマンドからブラウザで確認できます。
 
 ```bash
 open docs/screens.html
