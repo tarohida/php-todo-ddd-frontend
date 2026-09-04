@@ -3,15 +3,27 @@
     <section class="quick-capture" data-testid="quick-capture" aria-label="タスクを追加">
       <form class="quick-capture__form" @submit.prevent="addTask">
           <label for="create-task-input-box" class="visually-hidden">新しいタスク</label>
-          <input
-            id="create-task-input-box"
-            v-model="newTask"
-            type="text"
-            class="create-task-input-box"
-            placeholder="例：資料の下書きを仕上げる"
-            aria-label="新しいタスク"
-            :disabled="isBusy"
-          >
+          <div class="task-title-field">
+            <input
+              id="create-task-input-box"
+              v-model="newTask"
+              type="text"
+              class="create-task-input-box"
+              placeholder="例：資料の下書きを仕上げる"
+              aria-label="新しいタスク"
+              :aria-invalid="createTitleError ? 'true' : undefined"
+              :aria-describedby="createTitleError ? 'create-task-title-error' : undefined"
+              :disabled="isBusy"
+              @input="clearCreateTitleError"
+            >
+            <p
+              v-if="createTitleError"
+              id="create-task-title-error"
+              class="field-error"
+              role="alert"
+              data-testid="create-title-error"
+            >{{ createTitleError }}</p>
+          </div>
           <button
             class="primary-button add-task-button"
             type="submit"
@@ -89,7 +101,29 @@
                       @submit.prevent="saveTitle(task)"
                     >
                       <label :for="`edit-title-${task.id}`" class="visually-hidden">{{ task.title }}のタスク名</label>
-                      <input :id="`edit-title-${task.id}`" :ref="`editTitle${task.id}`" v-model="editingTitle" type="text" maxlength="255" :aria-label="`${task.title}のタスク名`" :data-testid="`edit-title-${task.id}`" :disabled="isBusy" @keydown.enter.prevent="saveTitle(task)" @keydown.esc.prevent="cancelTitleEdit">
+                      <div class="task-title-field">
+                        <input
+                          :id="`edit-title-${task.id}`"
+                          :ref="`editTitle${task.id}`"
+                          v-model="editingTitle"
+                          type="text"
+                          :aria-label="`${task.title}のタスク名`"
+                          :aria-invalid="editTitleError ? 'true' : undefined"
+                          :aria-describedby="editTitleError ? `edit-task-title-error-${task.id}` : undefined"
+                          :data-testid="`edit-title-${task.id}`"
+                          :disabled="isBusy"
+                          @input="clearEditTitleError"
+                          @keydown.enter.prevent="saveTitle(task)"
+                          @keydown.esc.prevent="cancelTitleEdit"
+                        >
+                        <p
+                          v-if="editTitleError"
+                          :id="`edit-task-title-error-${task.id}`"
+                          class="field-error"
+                          role="alert"
+                          :data-testid="`edit-title-error-${task.id}`"
+                        >{{ editTitleError }}</p>
+                      </div>
                       <div class="edit-actions"><button type="submit" class="primary-button compact-button" :data-testid="`save-title-${task.id}`" :disabled="isBusy">保存</button><button type="button" class="quiet-button compact-button" :data-testid="`cancel-title-${task.id}`" :disabled="isBusy" @click="cancelTitleEdit">キャンセル</button></div>
                     </form>
                     <span v-else class="task-title">{{ task.title }}</span>
@@ -119,6 +153,8 @@
 </template>
 
 <script>
+import { validateTaskTitle } from '../domain/taskTitle.js'
+
 export default {
   name: 'TodoList',
   props: {
@@ -131,6 +167,7 @@ export default {
     return {
       tasks: [],
       newTask: '',
+      createTitleError: '',
       isLoading: true,
       isMutating: false,
       errorMessage: '',
@@ -145,6 +182,7 @@ export default {
       ],
       editingTaskId: null,
       editingTitle: '',
+      editTitleError: '',
     }
   },
   computed: {
@@ -229,11 +267,21 @@ export default {
       }
       await this.loadTasks()
     },
+    clearCreateTitleError() {
+      this.createTitleError = ''
+    },
     async addTask() {
-      const title = this.newTask.trim()
-      if (!title || this.isBusy) {
+      if (this.isBusy) {
         return
       }
+
+      const { title, error } = validateTaskTitle(this.newTask)
+      if (error) {
+        this.createTitleError = error
+        return
+      }
+
+      this.createTitleError = ''
 
       this.isMutating = true
       this.errorMessage = ''
@@ -244,6 +292,7 @@ export default {
           return
         }
         this.newTask = ''
+        this.createTitleError = ''
         this.successMessage = 'タスクを追加しました。'
         await this.loadTasks({ preserveSuccess: true })
       } catch (error) {
@@ -314,6 +363,7 @@ export default {
       }
       this.editingTaskId = task.id
       this.editingTitle = task.title
+      this.editTitleError = ''
       this.errorMessage = ''
       this.successMessage = ''
       await this.$nextTick()
@@ -327,17 +377,23 @@ export default {
       }
       this.editingTaskId = null
       this.editingTitle = ''
+      this.editTitleError = ''
       this.errorMessage = ''
+    },
+    clearEditTitleError() {
+      this.editTitleError = ''
     },
     async saveTitle(task) {
       if (this.isBusy || this.editingTaskId !== task.id) {
         return
       }
-      const title = this.editingTitle.trim()
-      if (!title) {
-        this.errorMessage = 'タスク名を入力してください。'
+      const { title, error } = validateTaskTitle(this.editingTitle)
+      if (error) {
+        this.editTitleError = error
         return
       }
+
+      this.editTitleError = ''
 
       this.isMutating = true
       this.errorMessage = ''
@@ -352,6 +408,7 @@ export default {
         if (refreshed && this.isActive) {
           this.editingTaskId = null
           this.editingTitle = ''
+          this.editTitleError = ''
         }
       } catch (error) {
         if (this.isActive) {
@@ -374,9 +431,12 @@ export default {
 .task-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
 .task-panel__header h2 { margin: 0; color: var(--color-text-strong); font-size: clamp(1.15rem,3vw,1.45rem); letter-spacing: -.025em; }
 .quick-capture__form { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); }
+.task-title-field { display: grid; min-width: 0; gap: .4rem; }
 .create-task-input-box, .title-edit-form input { width: 100%; min-width: 0; border: 1px solid var(--color-border); border-radius: .8rem; background: var(--color-surface-raised); color: var(--color-text-strong); }
 .create-task-input-box { min-height: 3.25rem; padding: .75rem 1rem; }
 .create-task-input-box::placeholder { color: var(--color-text-muted); }
+.field-error { margin: 0; color: var(--color-danger); font-size: .8rem; line-height: 1.45; }
+.add-task-button { align-self: start; min-height: 3.25rem; }
 .primary-button, .quiet-button, .filter-button, .refresh-button, .icon-button { border: 0; border-radius: .75rem; font-weight: 700; transition: background-color .16s ease, color .16s ease, transform .16s ease; }
 .primary-button { padding: .75rem 1.15rem; background: var(--color-accent); color: white; }
 .primary-button:hover:not(:disabled) { background: var(--color-accent-hover); transform: translateY(-1px); }
@@ -404,7 +464,7 @@ export default {
 .delete-button:hover:not(:disabled) { background: var(--color-danger-soft); color: var(--color-danger); }
 .title-edit-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--space-2); }
 .title-edit-form input { min-height: 2.6rem; padding: .55rem .7rem; }
-.edit-actions { display: flex; gap: var(--space-2); }
+.edit-actions { display: flex; align-self: start; gap: var(--space-2); }
 .compact-button { padding: .55rem .75rem; font-size: .78rem; }
 .quiet-button { border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); }
 .state-message { margin: var(--space-4) clamp(1.25rem,4vw,2rem); padding: .85rem 1rem; border-radius: .8rem; font-size: .9rem; }

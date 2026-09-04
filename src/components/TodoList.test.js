@@ -201,6 +201,84 @@ describe('TodoList', () => {
     expect(wrapper.get('input').element.value).toBe('Keep me')
   })
 
+  it('shows an inline create error for whitespace-only input without calling the API', async () => {
+    const todoApi = api()
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    const input = wrapper.get('#create-task-input-box')
+    await input.setValue(' \t\u3000')
+    await wrapper.get('.quick-capture__form').trigger('submit')
+
+    const error = wrapper.get('[data-testid="create-title-error"]')
+    expect(todoApi.create).not.toHaveBeenCalled()
+    expect(error.attributes('id')).toBe('create-task-title-error')
+    expect(error.attributes('role')).toBe('alert')
+    expect(error.text()).toBe('タイトルを入力してください。')
+    expect(input.element.value).toBe(' \t\u3000')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(input.attributes('aria-describedby')).toBe(error.attributes('id'))
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
+  })
+
+  it('rejects a create title over 255 Unicode code points and does not use maxlength', async () => {
+    const todoApi = api()
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    const title = '😀'.repeat(256)
+    const input = wrapper.get('#create-task-input-box')
+    await input.setValue(title)
+    await wrapper.get('.quick-capture__form').trigger('submit')
+
+    expect(todoApi.create).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="create-title-error"]').text()).toBe('タイトルは255文字以内で入力してください。')
+    expect(input.element.value).toBe(title)
+    expect(input.attributes('maxlength')).toBeUndefined()
+  })
+
+  it.each([
+    ['ASCII', 'a'],
+    ['Japanese', 'あ'],
+    ['emoji', '😀'],
+  ])('creates a %s title at the 255-code-point boundary exactly once', async (_label, character) => {
+    const todoApi = api()
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    const title = character.repeat(255)
+    await wrapper.get('#create-task-input-box').setValue(`  ${title}  `)
+    await wrapper.get('.quick-capture__form').trigger('submit')
+    await flushPromises()
+
+    expect(todoApi.create).toHaveBeenCalledTimes(1)
+    expect(todoApi.create).toHaveBeenCalledWith(title)
+  })
+
+  it('clears only stale create validation while retaining an unrelated API error', async () => {
+    const create = vi.fn().mockRejectedValueOnce(new Error('追加できません。'))
+    const wrapper = mountList(api({ create }))
+    await flushPromises()
+
+    const input = wrapper.get('#create-task-input-box')
+    await input.setValue('API failure')
+    await wrapper.get('.quick-capture__form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('.state-message--error').text()).toBe('追加できません。')
+
+    await input.setValue('   ')
+    await wrapper.get('.quick-capture__form').trigger('submit')
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="create-title-error"]').text()).toBe('タイトルを入力してください。')
+    expect(wrapper.get('.state-message--error').text()).toBe('追加できません。')
+
+    await input.setValue('corrected')
+    expect(wrapper.find('[data-testid="create-title-error"]').exists()).toBe(false)
+    expect(input.attributes('aria-invalid')).toBeUndefined()
+    expect(input.attributes('aria-describedby')).toBeUndefined()
+    expect(wrapper.get('.state-message--error').text()).toBe('追加できません。')
+  })
+
   it('awaits delete, disables controls, then refreshes and reports success', async () => {
     const pending = deferred()
     const list = vi.fn()
@@ -380,17 +458,152 @@ describe('TodoList', () => {
     expect(todoApi.updateTitle).not.toHaveBeenCalled()
   })
 
-  it('rejects a blank edited title locally and keeps editing', async () => {
+  it('shows an inline edit error for a blank title and keeps the input active', async () => {
     const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
     const wrapper = mountList(todoApi)
     await flushPromises()
     await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
-    await wrapper.get('[data-testid="edit-title-1"]').setValue('   ')
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue(' \t\u3000')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+
+    const error = wrapper.get('[data-testid="edit-title-error-1"]')
+    expect(todoApi.updateTitle).not.toHaveBeenCalled()
+    expect(error.attributes('id')).toBe('edit-task-title-error-1')
+    expect(error.attributes('role')).toBe('alert')
+    expect(error.text()).toBe('タイトルを入力してください。')
+    expect(input.element.value).toBe(' \t\u3000')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(input.attributes('aria-describedby')).toBe(error.attributes('id'))
+    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(true)
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
+  })
+
+  it('rejects an edited title over 255 Unicode code points without an HTML maxlength', async () => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+
+    const title = '😀'.repeat(256)
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue(title)
     await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
 
     expect(todoApi.updateTitle).not.toHaveBeenCalled()
-    expect(wrapper.get('[role="alert"]').text()).toBe('タスク名を入力してください。')
-    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').text()).toBe('タイトルは255文字以内で入力してください。')
+    expect(input.element.value).toBe(title)
+    expect(input.attributes('maxlength')).toBeUndefined()
+  })
+
+  it.each([
+    ['ASCII', 'a'],
+    ['Japanese', 'あ'],
+    ['emoji', '😀'],
+  ])('updates a %s title at the 255-code-point boundary exactly once', async (_label, character) => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+
+    const title = character.repeat(255)
+    await wrapper.get('[data-testid="edit-title-1"]').setValue(`  ${title}  `)
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+
+    expect(todoApi.updateTitle).toHaveBeenCalledTimes(1)
+    expect(todoApi.updateTitle).toHaveBeenCalledWith(1, title)
+  })
+
+  it('clears only edit validation while typing and retains an API error', async () => {
+    const updateTitle = vi.fn().mockRejectedValueOnce(new Error('変更できません。'))
+    const wrapper = mountList(api({
+      list: vi.fn().mockResolvedValue([
+        { id: 1, title: 'First', completed: false },
+        { id: 2, title: 'Second', completed: false },
+      ]),
+      updateTitle,
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    let input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue('API failure')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await input.setValue('   ')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    expect(updateTitle).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').exists()).toBe(true)
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await input.setValue('corrected')
+    expect(wrapper.find('[data-testid="edit-title-error-1"]').exists()).toBe(false)
+    expect(input.attributes('aria-invalid')).toBeUndefined()
+    expect(input.attributes('aria-describedby')).toBeUndefined()
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+  })
+
+  it.each([
+    ['the cancel button', async (wrapper) => {
+      await wrapper.get('[data-testid="cancel-title-1"]').trigger('click')
+    }],
+    ['Escape', async (wrapper) => {
+      await wrapper.get('[data-testid="edit-title-1"]').trigger('keydown', { key: 'Escape' })
+    }],
+  ])('clears edit validation and the API error with %s', async (_label, cancel) => {
+    const updateTitle = vi.fn().mockRejectedValueOnce(new Error('変更できません。'))
+    const wrapper = mountList(api({
+      list: vi.fn().mockResolvedValue([{ id: 1, title: 'First', completed: false }]),
+      updateTitle,
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue('API failure')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+    await input.setValue('   ')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').exists()).toBe(true)
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await cancel(wrapper)
+
+    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(false)
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
+    expect(wrapper.vm.editTitleError).toBe('')
+  })
+
+  it('clears edit validation and the API error when editing another task', async () => {
+    const updateTitle = vi.fn().mockRejectedValueOnce(new Error('変更できません。'))
+    const wrapper = mountList(api({
+      list: vi.fn().mockResolvedValue([
+        { id: 1, title: 'First', completed: false },
+        { id: 2, title: 'Second', completed: false },
+      ]),
+      updateTitle,
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue('API failure')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+    await input.setValue('   ')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').exists()).toBe(true)
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await wrapper.get('[data-testid="edit-task-2"]').trigger('click')
+    const nextInput = wrapper.get('[data-testid="edit-title-2"]')
+    expect(wrapper.find('[data-testid="edit-title-error-2"]').exists()).toBe(false)
+    expect(nextInput.attributes('aria-invalid')).toBeUndefined()
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
   })
 
   it('keeps the old title and editing input when title update fails', async () => {
