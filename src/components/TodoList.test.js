@@ -28,9 +28,14 @@ function mountList(todoApi) {
   return mount(TodoList, { props: { todoApi } })
 }
 
+function mountAttachedList(todoApi) {
+  return mount(TodoList, { props: { todoApi }, attachTo: document.body })
+}
+
 describe('TodoList', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    document.body.innerHTML = ''
   })
 
   it('renders a semantic quick capture, summary, filters, and task list', async () => {
@@ -151,6 +156,7 @@ describe('TodoList', () => {
     const wrapper = mountList(todoApi)
     await flushPromises()
     await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-delete-task-1"]').trigger('click')
     const vm = wrapper.vm
 
     wrapper.unmount()
@@ -201,7 +207,202 @@ describe('TodoList', () => {
     expect(wrapper.get('input').element.value).toBe('Keep me')
   })
 
-  it('awaits delete, disables controls, then refreshes and reports success', async () => {
+  it('shows an inline create error for whitespace-only input without calling the API', async () => {
+    const todoApi = api()
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    const input = wrapper.get('#create-task-input-box')
+    await input.setValue(' \t\u3000')
+    await wrapper.get('.quick-capture__form').trigger('submit')
+
+    const error = wrapper.get('[data-testid="create-title-error"]')
+    expect(todoApi.create).not.toHaveBeenCalled()
+    expect(error.attributes('id')).toBe('create-task-title-error')
+    expect(error.attributes('role')).toBe('alert')
+    expect(error.text()).toBe('タイトルを入力してください。')
+    expect(input.element.value).toBe(' \t\u3000')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(input.attributes('aria-describedby')).toBe(error.attributes('id'))
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
+  })
+
+  it('rejects a create title over 255 Unicode code points and does not use maxlength', async () => {
+    const todoApi = api()
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    const title = '😀'.repeat(256)
+    const input = wrapper.get('#create-task-input-box')
+    await input.setValue(title)
+    await wrapper.get('.quick-capture__form').trigger('submit')
+
+    expect(todoApi.create).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="create-title-error"]').text()).toBe('タイトルは255文字以内で入力してください。')
+    expect(input.element.value).toBe(title)
+    expect(input.attributes('maxlength')).toBeUndefined()
+  })
+
+  it.each([
+    ['ASCII', 'a'],
+    ['Japanese', 'あ'],
+    ['emoji', '😀'],
+  ])('creates a %s title at the 255-code-point boundary exactly once', async (_label, character) => {
+    const todoApi = api()
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    const title = character.repeat(255)
+    await wrapper.get('#create-task-input-box').setValue(`  ${title}  `)
+    await wrapper.get('.quick-capture__form').trigger('submit')
+    await flushPromises()
+
+    expect(todoApi.create).toHaveBeenCalledTimes(1)
+    expect(todoApi.create).toHaveBeenCalledWith(title)
+  })
+
+  it('clears only stale create validation while retaining an unrelated API error', async () => {
+    const create = vi.fn().mockRejectedValueOnce(new Error('追加できません。'))
+    const wrapper = mountList(api({ create }))
+    await flushPromises()
+
+    const input = wrapper.get('#create-task-input-box')
+    await input.setValue('API failure')
+    await wrapper.get('.quick-capture__form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('.state-message--error').text()).toBe('追加できません。')
+
+    await input.setValue('   ')
+    await wrapper.get('.quick-capture__form').trigger('submit')
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="create-title-error"]').text()).toBe('タイトルを入力してください。')
+    expect(wrapper.get('.state-message--error').text()).toBe('追加できません。')
+
+    await input.setValue('corrected')
+    expect(wrapper.find('[data-testid="create-title-error"]').exists()).toBe(false)
+    expect(input.attributes('aria-invalid')).toBeUndefined()
+    expect(input.attributes('aria-describedby')).toBeUndefined()
+    expect(wrapper.get('.state-message--error').text()).toBe('追加できません。')
+  })
+
+  it('opens one row-level confirmation at a time without deleting and focuses cancel', async () => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([
+      { id: 1, title: 'First task', completed: false },
+      { id: 2, title: 'Second task', completed: false },
+    ]) })
+    const wrapper = mountAttachedList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+
+    const firstConfirmation = wrapper.get('[data-testid="delete-confirmation-1"]')
+    expect(todoApi.delete).not.toHaveBeenCalled()
+    expect(firstConfirmation.attributes('role')).toBe('group')
+    expect(firstConfirmation.attributes('aria-label')).toBe('First taskの削除確認')
+    expect(firstConfirmation.text()).toContain('「First task」を削除しますか？')
+    expect(wrapper.get('[data-testid="confirm-delete-task-1"]').text()).toBe('削除する')
+    expect(wrapper.get('[data-testid="cancel-delete-task-1"]').text()).toBe('キャンセル')
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="cancel-delete-task-1"]').element)
+
+    await wrapper.get('[data-testid="delete-task-2"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="delete-confirmation-2"]').isVisible()).toBe(true)
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="cancel-delete-task-2"]').element)
+    expect(todoApi.delete).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['the cancel button', async (wrapper) => {
+      await wrapper.get('[data-testid="cancel-delete-task-1"]').trigger('click')
+    }],
+    ['Escape', async (wrapper) => {
+      await wrapper.get('[data-testid="cancel-delete-task-1"]').trigger('keydown', { key: 'Escape' })
+    }],
+  ])('closes delete confirmation with %s, restores trigger focus, and makes no request', async (_label, cancel) => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Keep me', completed: false }]) })
+    const wrapper = mountAttachedList(todoApi)
+    await flushPromises()
+
+    const deleteButton = wrapper.get('[data-testid="delete-task-1"]')
+    deleteButton.element.focus()
+    await deleteButton.trigger('click')
+    await cancel(wrapper)
+
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+    expect(todoApi.delete).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="delete-task-1"]').element)
+    wrapper.unmount()
+  })
+
+  it('clears delete confirmation and its error when changing filters without stealing focus', async () => {
+    const todoApi = api({
+      list: vi.fn().mockResolvedValue([
+        { id: 1, title: 'Active task', completed: false },
+        { id: 2, title: 'Completed task', completed: true },
+      ]),
+      delete: vi.fn().mockRejectedValue(new Error('削除できません。')),
+    })
+    const wrapper = mountAttachedList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-delete-task-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="delete-error-1"]').exists()).toBe(true)
+
+    const completedFilter = wrapper.get('[data-testid="filter-completed"]')
+    completedFilter.element.focus()
+    await completedFilter.trigger('click')
+
+    expect(document.activeElement).toBe(completedFilter.element)
+    expect(wrapper.vm.deleteConfirmationTaskId).toBeNull()
+    expect(wrapper.vm.deleteErrorMessage).toBe('')
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+
+    const allFilter = wrapper.get('[data-testid="filter-all"]')
+    allFilter.element.focus()
+    await allFilter.trigger('click')
+
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="delete-task-1"]').exists()).toBe(true)
+    expect(todoApi.delete).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('clears hidden delete state when a completion refresh moves its task outside the active filter', async () => {
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ id: 1, title: 'Finish me', completed: false }])
+      .mockResolvedValueOnce([{ id: 1, title: 'Finish me', completed: true }])
+    const todoApi = api({
+      list,
+      delete: vi.fn().mockRejectedValue(new Error('削除できません。')),
+    })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="filter-active"]').trigger('click')
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-delete-task-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="delete-error-1"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="complete-task-1"]').setValue(true)
+    await flushPromises()
+
+    expect(todoApi.updateCompleted).toHaveBeenCalledWith(1, true)
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(wrapper.vm.deleteConfirmationTaskId).toBeNull()
+    expect(wrapper.vm.deleteErrorMessage).toBe('')
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="filter-all"]').trigger('click')
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="delete-task-1"]').exists()).toBe(true)
+  })
+
+  it('awaits confirmed delete, disables confirmation controls, and ignores repeated input', async () => {
     const pending = deferred()
     const list = vi.fn()
       .mockResolvedValueOnce([{ id: 1, title: 'Delete me' }])
@@ -211,9 +412,21 @@ describe('TodoList', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    expect(todoApi.delete).not.toHaveBeenCalled()
+    const confirm = wrapper.get('[data-testid="confirm-delete-task-1"]')
+    const cancel = wrapper.get('[data-testid="cancel-delete-task-1"]')
+    await confirm.trigger('click')
     expect(todoApi.delete).toHaveBeenCalledWith(1)
-    expect(wrapper.get('[data-testid="delete-task-1"]').attributes('disabled')).toBeDefined()
+    expect(todoApi.delete).toHaveBeenCalledTimes(1)
+    expect(confirm.attributes('disabled')).toBeDefined()
+    expect(cancel.attributes('disabled')).toBeDefined()
     expect(list).toHaveBeenCalledTimes(1)
+
+    await confirm.trigger('click')
+    await confirm.trigger('keydown', { key: 'Enter' })
+    await wrapper.get('[data-testid="delete-confirmation-1"]').trigger('keydown', { key: 'Escape' })
+    expect(todoApi.delete).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(true)
 
     pending.resolve()
     await flushPromises()
@@ -222,18 +435,120 @@ describe('TodoList', () => {
     expect(wrapper.find('[data-testid="delete-task-1"]').exists()).toBe(false)
   })
 
-  it('shows a delete failure and does not refresh', async () => {
-    const list = vi.fn().mockResolvedValue([{ id: 1, title: 'Keep me' }])
-    const todoApi = api({ list, delete: vi.fn().mockRejectedValue(new Error('削除できません。')) })
-    const wrapper = mountList(todoApi)
+  it('does not steal focus when the user moves to a filter during a pending delete', async () => {
+    const pendingDelete = deferred()
+    const list = vi.fn()
+      .mockResolvedValueOnce([
+        { id: 1, title: 'Delete me', completed: false },
+        { id: 2, title: 'Keep me', completed: false },
+      ])
+      .mockResolvedValueOnce([{ id: 2, title: 'Keep me', completed: false }])
+    const todoApi = api({ list, delete: vi.fn(() => pendingDelete.promise) })
+    const wrapper = mountAttachedList(todoApi)
     await flushPromises()
 
     await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    const confirm = wrapper.get('[data-testid="confirm-delete-task-1"]')
+    confirm.element.focus()
+    await confirm.trigger('click')
+
+    const completedFilter = wrapper.get('[data-testid="filter-completed"]')
+    completedFilter.element.focus()
+    await completedFilter.trigger('click')
+    expect(document.activeElement).toBe(completedFilter.element)
+
+    pendingDelete.resolve()
+    await flushPromises()
+
+    expect(todoApi.delete).toHaveBeenCalledTimes(1)
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(completedFilter.element.isConnected).toBe(true)
+    expect(document.activeElement).toBe(completedFilter.element)
+    wrapper.unmount()
+  })
+
+  it('keeps a failed delete inline, focuses retry, and succeeds on one retry', async () => {
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ id: 1, title: 'Keep me', completed: false }])
+      .mockResolvedValueOnce([])
+    const todoApi = api({
+      list,
+      delete: vi.fn()
+        .mockRejectedValueOnce(new Error('サーバーに接続できません。'))
+        .mockResolvedValueOnce(undefined),
+    })
+    const wrapper = mountAttachedList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-delete-task-1"]').trigger('click')
     await flushPromises()
 
     expect(list).toHaveBeenCalledTimes(1)
-    expect(wrapper.get('[role="alert"]').text()).toBe('削除できません。')
+    expect(todoApi.delete).toHaveBeenCalledTimes(1)
+    const error = wrapper.get('[data-testid="delete-error-1"]')
+    expect(error.attributes('role')).toBe('alert')
+    expect(error.text()).toContain('Keep me')
+    expect(error.text()).toContain('サーバーに接続できません。')
     expect(wrapper.text()).toContain('Keep me')
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(true)
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="confirm-delete-task-1"]').element)
+
+    await wrapper.get('[data-testid="confirm-delete-task-1"]').trigger('click')
+    await flushPromises()
+
+    expect(todoApi.delete).toHaveBeenCalledTimes(2)
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="delete-task-1"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['next visible task', 2, '[data-testid="delete-task-3"]'],
+    ['previous visible task', 3, '[data-testid="delete-task-2"]'],
+    ['create input', 1, '#create-task-input-box'],
+  ])('restores focus to the %s after delete success', async (_label, deletedId, expectedSelector) => {
+    const initialTasks = [
+      { id: 1, title: 'First', completed: false },
+      { id: 2, title: 'Second', completed: false },
+      { id: 3, title: 'Third', completed: false },
+    ].slice(0, deletedId === 1 ? 1 : 3)
+    const refreshedTasks = initialTasks.filter((task) => task.id !== deletedId)
+    const list = vi.fn()
+      .mockResolvedValueOnce(initialTasks)
+      .mockResolvedValueOnce(refreshedTasks)
+    const wrapper = mountAttachedList(api({ list }))
+    await flushPromises()
+
+    await wrapper.get(`[data-testid="delete-task-${deletedId}"]`).trigger('click')
+    await wrapper.get(`[data-testid="confirm-delete-task-${deletedId}"]`).trigger('click')
+    await flushPromises()
+
+    expect(document.activeElement).toBe(wrapper.get(expectedSelector).element)
+    wrapper.unmount()
+  })
+
+  it('removes a confirmed task locally when the following refresh fails', async () => {
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ id: 1, title: 'Do not resurrect', completed: false }])
+      .mockRejectedValueOnce(new Error('再読み込みできません。'))
+    const todoApi = api({ list })
+    const wrapper = mountAttachedList(todoApi)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="delete-task-1"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-delete-task-1"]').trigger('click')
+    await flushPromises()
+
+    expect(todoApi.delete).toHaveBeenCalledTimes(1)
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="delete-confirmation-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="delete-task-1"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Do not resurrect')
+    expect(wrapper.get('.state-message--error').text()).toBe('再読み込みできません。')
+    expect(document.activeElement).toBe(wrapper.get('#create-task-input-box').element)
+    wrapper.unmount()
   })
 
   it('filters active and completed tasks without another request', async () => {
@@ -380,17 +695,152 @@ describe('TodoList', () => {
     expect(todoApi.updateTitle).not.toHaveBeenCalled()
   })
 
-  it('rejects a blank edited title locally and keeps editing', async () => {
+  it('shows an inline edit error for a blank title and keeps the input active', async () => {
     const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
     const wrapper = mountList(todoApi)
     await flushPromises()
     await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
-    await wrapper.get('[data-testid="edit-title-1"]').setValue('   ')
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue(' \t\u3000')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+
+    const error = wrapper.get('[data-testid="edit-title-error-1"]')
+    expect(todoApi.updateTitle).not.toHaveBeenCalled()
+    expect(error.attributes('id')).toBe('edit-task-title-error-1')
+    expect(error.attributes('role')).toBe('alert')
+    expect(error.text()).toBe('タイトルを入力してください。')
+    expect(input.element.value).toBe(' \t\u3000')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    expect(input.attributes('aria-describedby')).toBe(error.attributes('id'))
+    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(true)
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
+  })
+
+  it('rejects an edited title over 255 Unicode code points without an HTML maxlength', async () => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+
+    const title = '😀'.repeat(256)
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue(title)
     await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
 
     expect(todoApi.updateTitle).not.toHaveBeenCalled()
-    expect(wrapper.get('[role="alert"]').text()).toBe('タスク名を入力してください。')
-    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').text()).toBe('タイトルは255文字以内で入力してください。')
+    expect(input.element.value).toBe(title)
+    expect(input.attributes('maxlength')).toBeUndefined()
+  })
+
+  it.each([
+    ['ASCII', 'a'],
+    ['Japanese', 'あ'],
+    ['emoji', '😀'],
+  ])('updates a %s title at the 255-code-point boundary exactly once', async (_label, character) => {
+    const todoApi = api({ list: vi.fn().mockResolvedValue([{ id: 1, title: 'Original', completed: false }]) })
+    const wrapper = mountList(todoApi)
+    await flushPromises()
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+
+    const title = character.repeat(255)
+    await wrapper.get('[data-testid="edit-title-1"]').setValue(`  ${title}  `)
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+
+    expect(todoApi.updateTitle).toHaveBeenCalledTimes(1)
+    expect(todoApi.updateTitle).toHaveBeenCalledWith(1, title)
+  })
+
+  it('clears only edit validation while typing and retains an API error', async () => {
+    const updateTitle = vi.fn().mockRejectedValueOnce(new Error('変更できません。'))
+    const wrapper = mountList(api({
+      list: vi.fn().mockResolvedValue([
+        { id: 1, title: 'First', completed: false },
+        { id: 2, title: 'Second', completed: false },
+      ]),
+      updateTitle,
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    let input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue('API failure')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await input.setValue('   ')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    expect(updateTitle).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').exists()).toBe(true)
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await input.setValue('corrected')
+    expect(wrapper.find('[data-testid="edit-title-error-1"]').exists()).toBe(false)
+    expect(input.attributes('aria-invalid')).toBeUndefined()
+    expect(input.attributes('aria-describedby')).toBeUndefined()
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+  })
+
+  it.each([
+    ['the cancel button', async (wrapper) => {
+      await wrapper.get('[data-testid="cancel-title-1"]').trigger('click')
+    }],
+    ['Escape', async (wrapper) => {
+      await wrapper.get('[data-testid="edit-title-1"]').trigger('keydown', { key: 'Escape' })
+    }],
+  ])('clears edit validation and the API error with %s', async (_label, cancel) => {
+    const updateTitle = vi.fn().mockRejectedValueOnce(new Error('変更できません。'))
+    const wrapper = mountList(api({
+      list: vi.fn().mockResolvedValue([{ id: 1, title: 'First', completed: false }]),
+      updateTitle,
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue('API failure')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+    await input.setValue('   ')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').exists()).toBe(true)
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await cancel(wrapper)
+
+    expect(wrapper.find('[data-testid="edit-title-1"]').exists()).toBe(false)
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
+    expect(wrapper.vm.editTitleError).toBe('')
+  })
+
+  it('clears edit validation and the API error when editing another task', async () => {
+    const updateTitle = vi.fn().mockRejectedValueOnce(new Error('変更できません。'))
+    const wrapper = mountList(api({
+      list: vi.fn().mockResolvedValue([
+        { id: 1, title: 'First', completed: false },
+        { id: 2, title: 'Second', completed: false },
+      ]),
+      updateTitle,
+    }))
+    await flushPromises()
+
+    await wrapper.get('[data-testid="edit-task-1"]').trigger('click')
+    const input = wrapper.get('[data-testid="edit-title-1"]')
+    await input.setValue('API failure')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    await flushPromises()
+    await input.setValue('   ')
+    await wrapper.get('[data-testid="edit-form-1"]').trigger('submit')
+    expect(wrapper.get('[data-testid="edit-title-error-1"]').exists()).toBe(true)
+    expect(wrapper.get('.state-message--error').text()).toBe('変更できません。')
+
+    await wrapper.get('[data-testid="edit-task-2"]').trigger('click')
+    const nextInput = wrapper.get('[data-testid="edit-title-2"]')
+    expect(wrapper.find('[data-testid="edit-title-error-2"]').exists()).toBe(false)
+    expect(nextInput.attributes('aria-invalid')).toBeUndefined()
+    expect(wrapper.find('.state-message--error').exists()).toBe(false)
   })
 
   it('keeps the old title and editing input when title update fails', async () => {

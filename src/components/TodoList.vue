@@ -3,15 +3,27 @@
     <section class="quick-capture" data-testid="quick-capture" aria-label="タスクを追加">
       <form class="quick-capture__form" @submit.prevent="addTask">
           <label for="create-task-input-box" class="visually-hidden">新しいタスク</label>
-          <input
-            id="create-task-input-box"
-            v-model="newTask"
-            type="text"
-            class="create-task-input-box"
-            placeholder="例：資料の下書きを仕上げる"
-            aria-label="新しいタスク"
-            :disabled="isBusy"
-          >
+          <div class="task-title-field">
+            <input
+              id="create-task-input-box"
+              v-model="newTask"
+              type="text"
+              class="create-task-input-box"
+              placeholder="例：資料の下書きを仕上げる"
+              aria-label="新しいタスク"
+              :aria-invalid="createTitleError ? 'true' : undefined"
+              :aria-describedby="createTitleError ? 'create-task-title-error' : undefined"
+              :disabled="isBusy"
+              @input="clearCreateTitleError"
+            >
+            <p
+              v-if="createTitleError"
+              id="create-task-title-error"
+              class="field-error"
+              role="alert"
+              data-testid="create-title-error"
+            >{{ createTitleError }}</p>
+          </div>
           <button
             class="primary-button add-task-button"
             type="submit"
@@ -36,7 +48,7 @@
               :class="{ 'filter-button--active': filter === option.value }"
               :aria-pressed="filter === option.value"
               :data-testid="`filter-${option.value}`"
-              @click="filter = option.value"
+              @click="changeFilter(option.value)"
             >
               {{ option.label }}
             </button>
@@ -69,7 +81,11 @@
                   v-for="task in filteredTasks"
                   :key="task.id"
                   class="todo-list"
-                  :class="{ 'todo-list-completed': task.completed, 'todo-list--editing': editingTaskId === task.id }"
+                  :class="{
+                    'todo-list-completed': task.completed,
+                    'todo-list--editing': editingTaskId === task.id,
+                    'todo-list--confirming': deleteConfirmationTaskId === task.id,
+                  }"
                 >
                   <div class="task-completion">
                     <input
@@ -89,12 +105,34 @@
                       @submit.prevent="saveTitle(task)"
                     >
                       <label :for="`edit-title-${task.id}`" class="visually-hidden">{{ task.title }}のタスク名</label>
-                      <input :id="`edit-title-${task.id}`" :ref="`editTitle${task.id}`" v-model="editingTitle" type="text" maxlength="255" :aria-label="`${task.title}のタスク名`" :data-testid="`edit-title-${task.id}`" :disabled="isBusy" @keydown.enter.prevent="saveTitle(task)" @keydown.esc.prevent="cancelTitleEdit">
+                      <div class="task-title-field">
+                        <input
+                          :id="`edit-title-${task.id}`"
+                          :ref="`editTitle${task.id}`"
+                          v-model="editingTitle"
+                          type="text"
+                          :aria-label="`${task.title}のタスク名`"
+                          :aria-invalid="editTitleError ? 'true' : undefined"
+                          :aria-describedby="editTitleError ? `edit-task-title-error-${task.id}` : undefined"
+                          :data-testid="`edit-title-${task.id}`"
+                          :disabled="isBusy"
+                          @input="clearEditTitleError"
+                          @keydown.enter.prevent="saveTitle(task)"
+                          @keydown.esc.prevent="cancelTitleEdit"
+                        >
+                        <p
+                          v-if="editTitleError"
+                          :id="`edit-task-title-error-${task.id}`"
+                          class="field-error"
+                          role="alert"
+                          :data-testid="`edit-title-error-${task.id}`"
+                        >{{ editTitleError }}</p>
+                      </div>
                       <div class="edit-actions"><button type="submit" class="primary-button compact-button" :data-testid="`save-title-${task.id}`" :disabled="isBusy">保存</button><button type="button" class="quiet-button compact-button" :data-testid="`cancel-title-${task.id}`" :disabled="isBusy" @click="cancelTitleEdit">キャンセル</button></div>
                     </form>
                     <span v-else class="task-title">{{ task.title }}</span>
                   </div>
-                  <div class="task-actions">
+                  <div v-if="deleteConfirmationTaskId !== task.id" class="task-actions">
                     <button
                       type="button"
                       class="icon-button"
@@ -106,11 +144,52 @@
                     <button
                       type="button"
                       class="icon-button delete-button"
+                      :ref="`deleteButton${task.id}`"
                       :aria-label="`${task.title}を削除`"
                       :data-testid="`delete-task-${task.id}`"
                       :disabled="isBusy"
-                      @click="deleteTask(task.id)"
+                      @click="openDeleteConfirmation(task)"
                     ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg></button>
+                  </div>
+                  <div
+                    v-if="deleteConfirmationTaskId === task.id"
+                    class="delete-confirmation"
+                    :ref="`deleteConfirmation${task.id}`"
+                    role="group"
+                    :aria-label="`${task.title}の削除確認`"
+                    :aria-busy="deleteRequestInFlight ? 'true' : undefined"
+                    :data-testid="`delete-confirmation-${task.id}`"
+                    @keydown.esc.prevent.stop="cancelDeleteConfirmation(task.id)"
+                  >
+                    <div class="delete-confirmation__copy">
+                      <p class="delete-confirmation__prompt">「{{ task.title }}」を削除しますか？</p>
+                      <p
+                        v-if="deleteErrorMessage"
+                        :id="`delete-error-${task.id}`"
+                        class="delete-confirmation__error"
+                        role="alert"
+                        :data-testid="`delete-error-${task.id}`"
+                      >{{ deleteErrorMessage }}</p>
+                    </div>
+                    <div class="delete-confirmation__actions">
+                      <button
+                        type="button"
+                        class="danger-button delete-confirmation__button"
+                        :ref="`confirmDeleteButton${task.id}`"
+                        :aria-describedby="deleteErrorMessage ? `delete-error-${task.id}` : undefined"
+                        :data-testid="`confirm-delete-task-${task.id}`"
+                        :disabled="isBusy"
+                        @click="confirmDeleteTask(task)"
+                      >削除する</button>
+                      <button
+                        type="button"
+                        class="quiet-button delete-confirmation__button"
+                        :ref="`cancelDeleteButton${task.id}`"
+                        :data-testid="`cancel-delete-task-${task.id}`"
+                        :disabled="isBusy"
+                        @click="cancelDeleteConfirmation(task.id)"
+                      >キャンセル</button>
+                    </div>
                   </div>
                 </li>
           </ul>
@@ -119,6 +198,8 @@
 </template>
 
 <script>
+import { validateTaskTitle } from '../domain/taskTitle.js'
+
 export default {
   name: 'TodoList',
   props: {
@@ -131,6 +212,7 @@ export default {
     return {
       tasks: [],
       newTask: '',
+      createTitleError: '',
       isLoading: true,
       isMutating: false,
       errorMessage: '',
@@ -145,6 +227,10 @@ export default {
       ],
       editingTaskId: null,
       editingTitle: '',
+      editTitleError: '',
+      deleteConfirmationTaskId: null,
+      deleteErrorMessage: '',
+      deleteRequestInFlight: false,
     }
   },
   computed: {
@@ -191,7 +277,7 @@ export default {
       event.target.checked = task.completed
       this.updateTaskCompletion(task, completed)
     },
-    async loadTasks({ preserveSuccess = false } = {}) {
+    async loadTasks({ preserveSuccess = false, excludeTaskId = null } = {}) {
       if (!this.isActive) {
         return false
       }
@@ -208,7 +294,15 @@ export default {
         if (!this.isActive || generation !== this.requestGeneration) {
           return false
         }
-        this.tasks = tasks
+        this.tasks = excludeTaskId === null
+          ? tasks
+          : tasks.filter((task) => task.id !== excludeTaskId)
+        if (
+          this.deleteConfirmationTaskId !== null
+          && !this.filteredTasks.some((task) => task.id === this.deleteConfirmationTaskId)
+        ) {
+          this.clearDeleteConfirmationState()
+        }
         return true
       } catch (error) {
         if (!this.isActive || generation !== this.requestGeneration) {
@@ -229,11 +323,25 @@ export default {
       }
       await this.loadTasks()
     },
+    changeFilter(filter) {
+      this.filter = filter
+      this.clearDeleteConfirmationState()
+    },
+    clearCreateTitleError() {
+      this.createTitleError = ''
+    },
     async addTask() {
-      const title = this.newTask.trim()
-      if (!title || this.isBusy) {
+      if (this.isBusy) {
         return
       }
+
+      const { title, error } = validateTaskTitle(this.newTask)
+      if (error) {
+        this.createTitleError = error
+        return
+      }
+
+      this.createTitleError = ''
 
       this.isMutating = true
       this.errorMessage = ''
@@ -244,6 +352,7 @@ export default {
           return
         }
         this.newTask = ''
+        this.createTitleError = ''
         this.successMessage = 'タスクを追加しました。'
         await this.loadTasks({ preserveSuccess: true })
       } catch (error) {
@@ -256,28 +365,127 @@ export default {
         }
       }
     },
-    async deleteTask(id) {
+    refElement(name) {
+      const ref = this.$refs[name]
+      return Array.isArray(ref) ? ref[0] : ref
+    },
+    focusRef(name) {
+      const element = this.refElement(name)
+      element?.focus()
+      return Boolean(element)
+    },
+    clearDeleteConfirmationState() {
+      this.deleteConfirmationTaskId = null
+      this.deleteErrorMessage = ''
+    },
+    deleteConfirmationHasFocus(id) {
+      const confirmation = this.refElement(`deleteConfirmation${id}`)
+      return Boolean(confirmation?.contains(document.activeElement))
+    },
+    shouldRestoreDeleteFocus(focusOriginatedInConfirmation) {
+      const activeElement = document.activeElement
+      return focusOriginatedInConfirmation && (
+        !activeElement
+        || activeElement === document.body
+        || !activeElement.isConnected
+      )
+    },
+    async openDeleteConfirmation(task) {
       if (this.isBusy) {
         return
       }
 
+      this.editingTaskId = null
+      this.editingTitle = ''
+      this.editTitleError = ''
+      this.clearDeleteConfirmationState()
+      this.deleteConfirmationTaskId = task.id
+      this.errorMessage = ''
+      this.successMessage = ''
+      await this.$nextTick()
+      if (this.isActive && this.deleteConfirmationTaskId === task.id) {
+        this.focusRef(`cancelDeleteButton${task.id}`)
+      }
+    },
+    async cancelDeleteConfirmation(id) {
+      if (this.isBusy || this.deleteRequestInFlight || this.deleteConfirmationTaskId !== id) {
+        return
+      }
+
+      this.clearDeleteConfirmationState()
+      await this.$nextTick()
+      if (this.isActive) {
+        this.focusRef(`deleteButton${id}`)
+      }
+    },
+    deleteFocusCandidates(id) {
+      const currentIndex = this.filteredTasks.findIndex((task) => task.id === id)
+      if (currentIndex === -1) {
+        return []
+      }
+      return [
+        this.filteredTasks[currentIndex + 1]?.id,
+        this.filteredTasks[currentIndex - 1]?.id,
+      ].filter((candidate) => candidate !== undefined)
+    },
+    restoreFocusAfterDelete(candidateIds) {
+      for (const candidateId of candidateIds) {
+        if (this.focusRef(`deleteButton${candidateId}`)) {
+          return
+        }
+      }
+      this.$el.querySelector('#create-task-input-box')?.focus()
+    },
+    async confirmDeleteTask(task) {
+      if (
+        this.isBusy
+        || this.deleteRequestInFlight
+        || this.deleteConfirmationTaskId !== task.id
+      ) {
+        return
+      }
+
+      const focusCandidates = this.deleteFocusCandidates(task.id)
+      const focusOriginatedInConfirmation = this.deleteConfirmationHasFocus(task.id)
+      let shouldFocusRetry = false
+      let shouldRestoreFocus = false
+      this.deleteRequestInFlight = true
       this.isMutating = true
       this.errorMessage = ''
       this.successMessage = ''
+      this.deleteErrorMessage = ''
       try {
-        await this.todoApi.delete(id)
+        await this.todoApi.delete(task.id)
         if (!this.isActive) {
           return
         }
+        this.tasks = this.tasks.filter((currentTask) => currentTask.id !== task.id)
+        this.clearDeleteConfirmationState()
         this.successMessage = 'タスクを削除しました。'
-        await this.loadTasks({ preserveSuccess: true })
+        await this.loadTasks({ preserveSuccess: true, excludeTaskId: task.id })
+        shouldRestoreFocus = this.isActive
       } catch (error) {
         if (this.isActive) {
-          this.errorMessage = this.errorText(error)
+          if (this.deleteConfirmationTaskId === task.id) {
+            this.deleteErrorMessage = `「${task.title}」を削除できませんでした。${this.errorText(error)}`
+            shouldFocusRetry = true
+          } else {
+            this.errorMessage = this.errorText(error)
+          }
         }
       } finally {
         if (this.isActive) {
           this.isMutating = false
+          this.deleteRequestInFlight = false
+          await this.$nextTick()
+          if (shouldFocusRetry && this.deleteConfirmationTaskId === task.id) {
+            this.focusRef(`confirmDeleteButton${task.id}`)
+          } else if (
+            shouldRestoreFocus
+            && this.shouldRestoreDeleteFocus(focusOriginatedInConfirmation)
+          ) {
+            this.restoreFocusAfterDelete(focusCandidates)
+          }
         }
       }
     },
@@ -312,8 +520,10 @@ export default {
       if (this.isBusy) {
         return
       }
+      this.clearDeleteConfirmationState()
       this.editingTaskId = task.id
       this.editingTitle = task.title
+      this.editTitleError = ''
       this.errorMessage = ''
       this.successMessage = ''
       await this.$nextTick()
@@ -327,17 +537,23 @@ export default {
       }
       this.editingTaskId = null
       this.editingTitle = ''
+      this.editTitleError = ''
       this.errorMessage = ''
+    },
+    clearEditTitleError() {
+      this.editTitleError = ''
     },
     async saveTitle(task) {
       if (this.isBusy || this.editingTaskId !== task.id) {
         return
       }
-      const title = this.editingTitle.trim()
-      if (!title) {
-        this.errorMessage = 'タスク名を入力してください。'
+      const { title, error } = validateTaskTitle(this.editingTitle)
+      if (error) {
+        this.editTitleError = error
         return
       }
+
+      this.editTitleError = ''
 
       this.isMutating = true
       this.errorMessage = ''
@@ -352,6 +568,7 @@ export default {
         if (refreshed && this.isActive) {
           this.editingTaskId = null
           this.editingTitle = ''
+          this.editTitleError = ''
         }
       } catch (error) {
         if (this.isActive) {
@@ -374,10 +591,13 @@ export default {
 .task-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
 .task-panel__header h2 { margin: 0; color: var(--color-text-strong); font-size: clamp(1.15rem,3vw,1.45rem); letter-spacing: -.025em; }
 .quick-capture__form { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); }
+.task-title-field { display: grid; min-width: 0; gap: .4rem; }
 .create-task-input-box, .title-edit-form input { width: 100%; min-width: 0; border: 1px solid var(--color-border); border-radius: .8rem; background: var(--color-surface-raised); color: var(--color-text-strong); }
 .create-task-input-box { min-height: 3.25rem; padding: .75rem 1rem; }
 .create-task-input-box::placeholder { color: var(--color-text-muted); }
-.primary-button, .quiet-button, .filter-button, .refresh-button, .icon-button { border: 0; border-radius: .75rem; font-weight: 700; transition: background-color .16s ease, color .16s ease, transform .16s ease; }
+.field-error { margin: 0; color: var(--color-danger); font-size: .8rem; line-height: 1.45; }
+.add-task-button { align-self: start; min-height: 3.25rem; }
+.primary-button, .danger-button, .quiet-button, .filter-button, .refresh-button, .icon-button { border: 0; border-radius: .75rem; font-weight: 700; transition: background-color .16s ease, color .16s ease, transform .16s ease; }
 .primary-button { padding: .75rem 1.15rem; background: var(--color-accent); color: white; }
 .primary-button:hover:not(:disabled) { background: var(--color-accent-hover); transform: translateY(-1px); }
 .task-panel { overflow: hidden; }
@@ -393,7 +613,7 @@ export default {
 .task-list { margin: 0; padding: 0; list-style: none; }
 .todo-list { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: var(--space-4); min-height: 4.6rem; padding: 1rem clamp(1.25rem,4vw,2rem); align-items: center; border-bottom: 1px solid var(--color-border-subtle); transition: background-color .16s ease; }
 .todo-list:last-child { border-bottom: 0; }
-.todo-list:hover, .todo-list--editing { background: var(--color-surface-raised); }
+.todo-list:hover, .todo-list--editing, .todo-list--confirming { background: var(--color-surface-raised); }
 .task-completion input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--color-accent); }
 .task-title { display: block; overflow-wrap: anywhere; color: var(--color-text-strong); line-height: 1.55; }
 .todo-list-completed .task-title { color: var(--color-text-muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
@@ -402,9 +622,18 @@ export default {
 .icon-button { display: grid; width: 2.5rem; height: 2.5rem; padding: 0; place-items: center; background: transparent; color: var(--color-text-muted); }
 .icon-button svg { width: 1.15rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .delete-button:hover:not(:disabled) { background: var(--color-danger-soft); color: var(--color-danger); }
+.delete-confirmation { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-3); border-radius: .9rem; background: var(--color-danger-soft); }
+.delete-confirmation__copy { display: grid; min-width: 0; gap: .35rem; }
+.delete-confirmation__prompt, .delete-confirmation__error { margin: 0; overflow-wrap: anywhere; }
+.delete-confirmation__prompt { color: var(--color-text-strong); font-size: .9rem; font-weight: 700; }
+.delete-confirmation__error { color: var(--color-danger); font-size: .8rem; line-height: 1.45; }
+.delete-confirmation__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.delete-confirmation__button { min-height: 2.75rem; padding: .65rem .9rem; }
+.danger-button { background: var(--color-danger); color: var(--color-on-danger); }
+.danger-button:hover:not(:disabled) { filter: brightness(.92); }
 .title-edit-form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--space-2); }
 .title-edit-form input { min-height: 2.6rem; padding: .55rem .7rem; }
-.edit-actions { display: flex; gap: var(--space-2); }
+.edit-actions { display: flex; align-self: start; gap: var(--space-2); }
 .compact-button { padding: .55rem .75rem; font-size: .78rem; }
 .quiet-button { border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); }
 .state-message { margin: var(--space-4) clamp(1.25rem,4vw,2rem); padding: .85rem 1rem; border-radius: .8rem; font-size: .9rem; }
@@ -423,5 +652,8 @@ export default {
   .todo-list { grid-template-columns: auto minmax(0,1fr); gap: var(--space-3); }
   .task-actions { grid-column: 2; }
   .title-edit-form { grid-template-columns: 1fr; }
+  .delete-confirmation { grid-template-columns: minmax(0,1fr); }
+  .delete-confirmation__actions { justify-content: stretch; }
+  .delete-confirmation__button { flex: 1 1 8rem; min-width: 0; }
 }
 </style>
